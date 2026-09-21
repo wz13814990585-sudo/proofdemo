@@ -1,0 +1,53 @@
+{
+  "schema_version": "1.0",
+  "id": "todo_demo",
+  "title": "Create a task",
+  "goal": "Show a product user creating a new task and seeing it in the list.",
+  "source_url": "https://example.test/todos",
+  "audience": "Product evaluation team",
+  "language": "en",
+  "approximate_duration_seconds": 30,
+  "scenes": [
+    {
+      "id": "create_task",
+      "title": "Create the task",
+      "goal": "Add a task named Prepare launch demo.",
+      "actions": [
+        {
+          "type": "goto",
+          "url": "https://example.test/todos"
+        },
+        {
+          "type": "fill",
+          "target": {
+            "strategy": "label",
+            "value": "Task title"
+          },
+          "value": "Prepare launch demo"
+        },
+        {
+          "type": "click",
+          "target": {
+            "strategy": "role",
+            "value": "button",
+            "name": "Add task"
+          }
+        },
+        {
+          "type": "screenshot",
+          "name": "task-created"
+        }
+      ],
+      "assertions": [
+        {
+          "type": "text_contains",
+          "target": {
+            "strategy": "test_id",
+            "value": "task-list"
+          },
+          "expected_text": "Prepare launch demo"
+        }
+      ]
+    }
+  ]
+}

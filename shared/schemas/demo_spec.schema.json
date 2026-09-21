@@ -1,0 +1,441 @@
+{
+  "$defs": {
+    "ClickAction": {
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "$ref": "#/$defs/ElementTarget"
+        },
+        "timeout_ms": {
+          "default": 10000,
+          "maximum": 120000,
+          "minimum": 1,
+          "title": "Timeout Ms",
+          "type": "integer"
+        },
+        "type": {
+          "const": "click",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "target"
+      ],
+      "title": "ClickAction",
+      "type": "object"
+    },
+    "ElementTarget": {
+      "additionalProperties": false,
+      "description": "A stable description of a browser element to resolve later.",
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "strategy": {
+          "enum": [
+            "role",
+            "label",
+            "text",
+            "test_id",
+            "css"
+          ],
+          "title": "Strategy",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "strategy",
+        "value"
+      ],
+      "title": "ElementTarget",
+      "type": "object"
+    },
+    "ElementVisibleAssertion": {
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "$ref": "#/$defs/ElementTarget"
+        },
+        "timeout_ms": {
+          "default": 10000,
+          "maximum": 120000,
+          "minimum": 1,
+          "title": "Timeout Ms",
+          "type": "integer"
+        },
+        "type": {
+          "const": "element_visible",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "target"
+      ],
+      "title": "ElementVisibleAssertion",
+      "type": "object"
+    },
+    "FillAction": {
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "$ref": "#/$defs/ElementTarget"
+        },
+        "timeout_ms": {
+          "default": 10000,
+          "maximum": 120000,
+          "minimum": 1,
+          "title": "Timeout Ms",
+          "type": "integer"
+        },
+        "type": {
+          "const": "fill",
+          "title": "Type",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 10000,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "target",
+        "value"
+      ],
+      "title": "FillAction",
+      "type": "object"
+    },
+    "GotoAction": {
+      "additionalProperties": false,
+      "properties": {
+        "timeout_ms": {
+          "default": 30000,
+          "maximum": 120000,
+          "minimum": 1,
+          "title": "Timeout Ms",
+          "type": "integer"
+        },
+        "type": {
+          "const": "goto",
+          "title": "Type",
+          "type": "string"
+        },
+        "url": {
+          "format": "uri",
+          "maxLength": 2083,
+          "minLength": 1,
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "url"
+      ],
+      "title": "GotoAction",
+      "type": "object"
+    },
+    "Scene": {
+      "additionalProperties": false,
+      "description": "An ordered story beat. Assertion execution starts in Stage 2.",
+      "properties": {
+        "actions": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "click": "#/$defs/ClickAction",
+                "fill": "#/$defs/FillAction",
+                "goto": "#/$defs/GotoAction",
+                "screenshot": "#/$defs/ScreenshotAction",
+                "wait": "#/$defs/WaitAction"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/GotoAction"
+              },
+              {
+                "$ref": "#/$defs/ClickAction"
+              },
+              {
+                "$ref": "#/$defs/FillAction"
+              },
+              {
+                "$ref": "#/$defs/WaitAction"
+              },
+              {
+                "$ref": "#/$defs/ScreenshotAction"
+              }
+            ]
+          },
+          "minItems": 1,
+          "title": "Actions",
+          "type": "array"
+        },
+        "assertions": {
+          "default": [],
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "element_visible": "#/$defs/ElementVisibleAssertion",
+                "text_contains": "#/$defs/TextContainsAssertion",
+                "url_equals": "#/$defs/UrlEqualsAssertion"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/ElementVisibleAssertion"
+              },
+              {
+                "$ref": "#/$defs/UrlEqualsAssertion"
+              },
+              {
+                "$ref": "#/$defs/TextContainsAssertion"
+              }
+            ]
+          },
+          "title": "Assertions",
+          "type": "array"
+        },
+        "goal": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Goal",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[a-z][a-z0-9_-]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "goal",
+        "actions"
+      ],
+      "title": "Scene",
+      "type": "object"
+    },
+    "ScreenshotAction": {
+      "additionalProperties": false,
+      "properties": {
+        "full_page": {
+          "default": false,
+          "title": "Full Page",
+          "type": "boolean"
+        },
+        "name": {
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,99}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "const": "screenshot",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "name"
+      ],
+      "title": "ScreenshotAction",
+      "type": "object"
+    },
+    "TextContainsAssertion": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_text": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Expected Text",
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/ElementTarget"
+        },
+        "timeout_ms": {
+          "default": 10000,
+          "maximum": 120000,
+          "minimum": 1,
+          "title": "Timeout Ms",
+          "type": "integer"
+        },
+        "type": {
+          "const": "text_contains",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "target",
+        "expected_text"
+      ],
+      "title": "TextContainsAssertion",
+      "type": "object"
+    },
+    "UrlEqualsAssertion": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_url": {
+          "format": "uri",
+          "maxLength": 2083,
+          "minLength": 1,
+          "title": "Expected Url",
+          "type": "string"
+        },
+        "type": {
+          "const": "url_equals",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "expected_url"
+      ],
+      "title": "UrlEqualsAssertion",
+      "type": "object"
+    },
+    "WaitAction": {
+      "additionalProperties": false,
+      "properties": {
+        "duration_ms": {
+          "maximum": 30000,
+          "minimum": 1,
+          "title": "Duration Ms",
+          "type": "integer"
+        },
+        "type": {
+          "const": "wait",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "duration_ms"
+      ],
+      "title": "WaitAction",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "The authoritative, versioned contract for a requested demo.",
+  "properties": {
+    "approximate_duration_seconds": {
+      "anyOf": [
+        {
+          "maximum": 3600,
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Approximate Duration Seconds"
+    },
+    "audience": {
+      "anyOf": [
+        {
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Audience"
+    },
+    "goal": {
+      "maxLength": 2000,
+      "minLength": 1,
+      "title": "Goal",
+      "type": "string"
+    },
+    "id": {
+      "pattern": "^[a-z][a-z0-9_-]{0,63}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "language": {
+      "default": "en",
+      "pattern": "^[a-z]{2,3}(?:-[A-Z]{2})?$",
+      "title": "Language",
+      "type": "string"
+    },
+    "scenes": {
+      "items": {
+        "$ref": "#/$defs/Scene"
+      },
+      "minItems": 1,
+      "title": "Scenes",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source_url": {
+      "format": "uri",
+      "maxLength": 2083,
+      "minLength": 1,
+      "title": "Source Url",
+      "type": "string"
+    },
+    "title": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Title",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "title",
+    "goal",
+    "source_url",
+    "scenes"
+  ],
+  "title": "DemoSpec",
+  "type": "object"
+}

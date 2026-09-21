@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.venv/
+dist/
+build/
+
+# JavaScript
+frontend/node_modules/
+frontend/dist/
+
+# Environment and local tools
+.env
+.DS_Store
+.idea/
+.vscode/
+
+# Runtime artifacts (kept empty in Stage 0)
+artifacts/
