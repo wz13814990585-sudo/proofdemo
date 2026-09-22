@@ -25,14 +25,14 @@ def clear_proofdemo_environment(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_settings_read_namespaced_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PROOFDEMO_ENVIRONMENT", "test")
-    monkeypatch.setenv("PROOFDEMO_API_HOST", "0.0.0.0")
+    monkeypatch.setenv("PROOFDEMO_API_HOST", "127.0.0.1")
     monkeypatch.setenv("PROOFDEMO_API_PORT", "9000")
     monkeypatch.setenv("PROOFDEMO_FRONTEND_ORIGIN", "http://127.0.0.1:4173")
 
     settings = Settings.from_env()
 
     assert settings.environment == "test"
-    assert settings.api_host == "0.0.0.0"
+    assert settings.api_host == "127.0.0.1"
     assert settings.api_port == 9000
     assert settings.frontend_origin == "http://127.0.0.1:4173"
 
@@ -107,6 +107,11 @@ def test_settings_reject_invalid_frontend_origin(origin: str) -> None:
 def test_production_requires_https_frontend_origin() -> None:
     with pytest.raises(ValueError, match="HTTPS"):
         Settings(environment="production", frontend_origin="http://demo.example.com")
+
+
+def test_job_api_rejects_non_loopback_binding() -> None:
+    with pytest.raises(ValueError, match="loopback"):
+        Settings(api_host="0.0.0.0")
 
 
 def test_provider_settings_normalize_blank_values() -> None:

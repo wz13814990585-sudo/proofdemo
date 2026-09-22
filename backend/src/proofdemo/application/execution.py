@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -123,9 +124,17 @@ def safe_artifact_path(artifact_dir: Path, filename: str) -> Path:
 class ExecutionService:
     """Execute actions, coordinate verification, and capture browser evidence."""
 
-    def __init__(self, browser: BrowserPort) -> None:
+    def __init__(
+        self,
+        browser: BrowserPort,
+        *,
+        trace_observer: Callable[[TraceEvent], None] | None = None,
+        capture_live_preview: bool = False,
+    ) -> None:
         self._browser = browser
         self._verifier = VerificationService(browser)
+        self._trace_observer = trace_observer
+        self._capture_live_preview = capture_live_preview
 
     def execute(self, spec: DemoSpec, artifact_dir: Path) -> ExecutionReport:
         """Execute and return the report; CLI callers should persist the full bundle."""
@@ -134,7 +143,7 @@ class ExecutionService:
     def execute_bundle(self, spec: DemoSpec, artifact_dir: Path) -> ExecutionBundle:
         artifact_dir.mkdir(parents=True, exist_ok=True)
         run = create_demo_run(spec.id)
-        trace = TraceRecorder(run.id, spec.id)
+        trace = TraceRecorder(run.id, spec.id, observer=self._trace_observer)
         run = self._transition(run, DemoRunStatus.VALIDATED, trace)
         run = self._transition(run, DemoRunStatus.RUNNING, trace)
         action_results: list[ActionResult] = []
@@ -344,7 +353,29 @@ class ExecutionService:
                 status="SUCCEEDED",
                 data=data,
             )
+            if self._capture_live_preview:
+                self._update_live_preview(artifact_dir, trace, scene.id, action.id)
         return None
+
+    def _update_live_preview(
+        self,
+        artifact_dir: Path,
+        trace: TraceRecorder,
+        scene_id: str,
+        action_id: str,
+    ) -> None:
+        try:
+            path = safe_artifact_path(artifact_dir, "preview/latest.png")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            self._browser.screenshot(path, full_page=False)
+        except (BrowserActionError, ArtifactPathError, OSError):
+            return
+        trace.record(
+            TraceEventKind.PREVIEW_UPDATED,
+            scene_id=scene_id,
+            action_id=action_id,
+            status="SUCCEEDED",
+        )
 
     def _capture_scene_evidence(
         self,

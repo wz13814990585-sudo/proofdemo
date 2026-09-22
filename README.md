@@ -8,7 +8,7 @@ ProofDemo 是一个经过验证的产品演示系统。它的长期目标是把 
 Intent -> Plan -> Execute -> Verify -> Capture -> Render
 ```
 
-本仓库实现了 **ProofDemo V1**：有界的可选规划器、确定性执行与验证、关联产物、1080p 视频、按需启用且基于证据的旁白、重放配方、确定性 UI 变化检测，以及需要审核的单场景目标修复。V1 还加入了离线质量基准、资源预算、执行前安全评估、生产配置强化和发布运维能力。模型可以提出可审查的 DemoSpec 或目标修复建议，但不能执行它们，也不能声称成功；口述的产品声明只能使用从已通过断言派生的固定模板。准确范围请参阅[当前阶段](docs/CURRENT_STAGE.md)。
+本仓库完成了 **Engine V1** 和 **Stage 11 本地产品工作台**：有界规划器、确定性执行与验证、关联产物、1080p 视频、按需启用且基于证据的旁白、重放配方、变化检测与有界修复。用户现在可以从 UI 提交 URL 与目标、观察执行并查看验证与视频。它还不是可探索任意陌生站点的 Browser Agent，也不是托管 SaaS。准确范围请参阅[当前阶段](docs/CURRENT_STAGE.md)。
 
 ## 前置要求
 
@@ -40,7 +40,7 @@ cp .env.example .env
 proofdemo-api
 ```
 
-API 运行在 `http://127.0.0.1:8000`。可通过以下命令验证：
+API 运行在 `http://127.0.0.1:8000`。本地任务保存在 `PROOFDEMO_JOB_ROOT`（默认 `artifacts/jobs`）。任务写入请求要求 `X-ProofDemo-Client: studio`，且浏览器请求的 Origin 必须与配置的前端源站一致；这只是防跨站请求边界，不是用户认证。不要把 API 直接暴露到公网。可通过以下命令验证：
 
 ```bash
 curl http://127.0.0.1:8000/health
@@ -58,7 +58,9 @@ cp frontend/.env.example frontend/.env.local
 npm --prefix frontend run dev
 ```
 
-打开 `http://127.0.0.1:5173`。前端会检查 API 健康端点。可在 `frontend/.env.local` 中设置 `VITE_API_BASE_URL`，覆盖默认 API URL。
+打开 `http://127.0.0.1:5173`。前端可输入产品 URL、演示目标、受众、语言和时长，点击“生成演示”，查看规划后的 DemoSpec、实时浏览器截图与操作事件、逐场景验证，以及仅在验证通过后可播放/下载的视频。具名高风险操作会停在单独审批态，凭据填充会被阻止。可在 `frontend/.env.local` 中设置 `VITE_API_BASE_URL`，覆盖默认 API URL。
+
+工作台需要明确配置 `PROOFDEMO_OPENAI_MODEL` 和进程环境中的 `OPENAI_API_KEY` 才能从自然语言规划；缺少配置会显示 `BLOCKED`。当前规划器不会自主浏览陌生站点，因而对未提供页面结构线索的任意 URL 不能保证生成可执行 DemoSpec。Stage 11 的真实验收使用仓库内置 Todo 应用及受控规划器；通用站点探索列为 Stage 12。前端语言选择会传给规划器，但当前自动视频仍是基础 FFmpeg 合成；字幕、自动缩放和精美编辑尚未实现。
 
 ## 运行确定性示例
 
@@ -71,7 +73,7 @@ proofdemo plan https://app.example.test/ \
   --output candidate.json
 ```
 
-将生成的文件传给 `proofdemo run` 前必须先进行审查。规划只执行一次结构化输出调用，不使用工具，也不持久化对话；候选结果会按同源 DemoSpec 契约重新验证。适配器使用的提供方机制请参阅 [OpenAI 结构化输出指南](https://developers.openai.com/api/docs/guides/structured-outputs)。
+CLI 的 `plan` 与 `run` 仍是两条显式命令，必须在运行前审查候选。工作台的“生成演示”则会对安全评估为 `ALLOWED` 的计划继续执行；具名风险操作要求在 UI 中重新审核并批准。规划只执行一次结构化输出调用，不使用工具，也不持久化对话；候选结果会按同源 DemoSpec 契约重新验证。适配器使用的提供方机制请参阅 [OpenAI 结构化输出指南](https://developers.openai.com/api/docs/guides/structured-outputs)。
 
 对于仓库内置的确定性示例，请在一个终端中启动独立的 Todo fixture：
 

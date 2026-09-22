@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import suppress
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Literal
@@ -20,6 +21,7 @@ class TraceEventKind(StrEnum):
     ARTIFACT_CAPTURED = "ARTIFACT_CAPTURED"
     ARTIFACT_CAPTURE_FAILED = "ARTIFACT_CAPTURE_FAILED"
     BROWSER_SESSION_CLOSED = "BROWSER_SESSION_CLOSED"
+    PREVIEW_UPDATED = "PREVIEW_UPDATED"
 
 
 class TraceEvent(BaseModel):
@@ -54,11 +56,13 @@ class TraceRecorder:
         spec_id: str,
         *,
         clock: Callable[[], datetime] | None = None,
+        observer: Callable[[TraceEvent], None] | None = None,
     ) -> None:
         self._run_id = run_id
         self._spec_id = spec_id
         self._clock = clock or (lambda: datetime.now(UTC))
         self._events: list[TraceEvent] = []
+        self._observer = observer
 
     @property
     def events(self) -> tuple[TraceEvent, ...]:
@@ -87,4 +91,8 @@ class TraceRecorder:
             data=data or {},
         )
         self._events.append(event)
+        if self._observer is not None:
+            # A live UI subscriber is never execution or verification truth.
+            with suppress(Exception):
+                self._observer(event)
         return event
