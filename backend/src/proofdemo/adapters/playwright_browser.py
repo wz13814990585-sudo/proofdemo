@@ -142,7 +142,8 @@ class PlaywrightBrowser:
                 f"fill target was not actionable within {timeout_ms} ms"
             ) from error
         except PlaywrightError as error:
-            raise BrowserActionError(f"fill failed: {error}") from error
+            # Playwright call logs can echo the supplied fill value.
+            raise BrowserActionError("fill failed in browser runtime") from error
 
     def pause(self, duration_ms: int) -> None:
         self._require_page().wait_for_timeout(duration_ms)

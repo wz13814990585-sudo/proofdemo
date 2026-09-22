@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from playwright.sync_api import Error as PlaywrightError
 
 from proofdemo.adapters.ffmpeg_render import FFmpegRenderAdapter
 from proofdemo.adapters.playwright_browser import PlaywrightBrowser
@@ -208,6 +209,22 @@ def test_real_adapter_reports_missing_target(todo_url: str) -> None:
             )
     finally:
         browser.close()
+
+
+def test_fill_error_never_echoes_the_fill_value(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FailingLocator:
+        def fill(self, value: str, *, timeout: int) -> None:
+            raise PlaywrightError(f"fill call included {value}")
+
+    browser = PlaywrightBrowser()
+    monkeypatch.setattr(browser, "_locator", lambda target: FailingLocator())
+
+    with pytest.raises(BrowserActionError) as captured:
+        browser.fill(
+            LabelTarget(strategy="label", label="Task title"), "demo-sentinel", timeout_ms=10
+        )
+
+    assert "demo-sentinel" not in str(captured.value)
 
 
 def test_real_adapter_rejects_cross_origin_navigation(todo_url: str) -> None:

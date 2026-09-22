@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
@@ -31,9 +32,17 @@ class Settings(BaseSettings):
     api_host: str = "127.0.0.1"
     api_port: int = Field(default=8000, ge=1, le=65_535)
     frontend_origin: str = "http://127.0.0.1:5173"
+    job_root: Path = Path("artifacts/jobs")
     openai_model: str | None = None
     openai_tts_model: str | None = None
     openai_tts_voice: str | None = None
+
+    @field_validator("api_host")
+    @classmethod
+    def validate_local_api_host(cls, value: str) -> str:
+        if value not in {"127.0.0.1", "::1", "localhost"}:
+            raise ValueError("unauthenticated job API must bind to a loopback host")
+        return value
 
     @field_validator("frontend_origin")
     @classmethod

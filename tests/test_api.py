@@ -1,6 +1,7 @@
 """Acceptance tests for the Stage 0.1 HTTP surface."""
 
 import asyncio
+from pathlib import Path
 
 from httpx import ASGITransport, AsyncClient, Response
 
@@ -67,3 +68,34 @@ def test_production_disables_docs_and_enables_transport_headers() -> None:
     assert docs.status_code == 404
     assert health.headers["strict-transport-security"].startswith("max-age=31536000")
     assert health.headers["content-security-policy"] == "default-src 'none'; frame-ancestors 'none'"
+
+
+def test_job_writes_require_studio_header_and_trusted_origin(tmp_path: Path) -> None:
+    settings = Settings(environment="test", job_root=tmp_path)
+    app = create_app(settings)
+    payload = {"source_url": "https://example.test/", "goal": "Show a task"}
+
+    missing_header = asyncio.run(request(app, "POST", "/jobs", json=payload))
+    foreign_origin = asyncio.run(
+        request(
+            app,
+            "POST",
+            "/jobs",
+            json=payload,
+            headers={"X-ProofDemo-Client": "studio", "Origin": "https://attacker.test"},
+        )
+    )
+    valid_origin_bad_body = asyncio.run(
+        request(
+            app,
+            "POST",
+            "/jobs",
+            json={},
+            headers={"X-ProofDemo-Client": "studio", "Origin": settings.frontend_origin},
+        )
+    )
+
+    assert missing_header.status_code == 403
+    assert missing_header.headers["x-content-type-options"] == "nosniff"
+    assert foreign_origin.status_code == 403
+    assert valid_origin_bad_body.status_code == 422
