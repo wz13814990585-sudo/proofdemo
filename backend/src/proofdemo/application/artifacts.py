@@ -31,6 +31,7 @@ class ArtifactKind(StrEnum):
     NARRATED_VIDEO = "NARRATED_VIDEO"
     DEMO_RECIPE = "DEMO_RECIPE"
     REPLAY_PREFLIGHT = "REPLAY_PREFLIGHT"
+    UI_CHANGE_REPORT = "UI_CHANGE_REPORT"
 
 
 class ArtifactDeclaration(BaseModel):

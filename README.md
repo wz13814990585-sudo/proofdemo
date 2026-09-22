@@ -10,11 +10,11 @@ The product flow is:
 Intent -> Plan -> Execute -> Verify -> Capture -> Render
 ```
 
-This repository currently implements **Stage 7**: a bounded optional planner,
+This repository currently implements **Stage 8**: a bounded optional planner,
 deterministic execution and verification, correlated artifacts, 1080p video,
-opt-in evidence-grounded narration, and compatibility-checked replay recipes. A
-model may propose a reviewable DemoSpec, but it cannot execute it or claim
-success; spoken product claims are fixed templates derived from passed
+opt-in evidence-grounded narration, replay recipes, and deterministic UI change
+detection. A model may propose a reviewable DemoSpec, but it cannot execute it
+or claim success; spoken product claims are fixed templates derived from passed
 assertions. See
 [the current stage](docs/CURRENT_STAGE.md) for the exact scope.
 
@@ -133,6 +133,13 @@ proofdemo replay artifacts/todo-demo/demo_recipe.json \
 compatibility issue before the browser starts. Replay narration remains opt-in
 with the same `--narrate`, `--tts-model`, and `--voice` flags.
 
+When the source `execution_report.json` is beside the recipe, replay also
+verifies its recipe-recorded hash and writes `ui_change_report.json`. Use
+`--baseline-artifacts PATH` to select a different baseline directory. An
+explicit missing or invalid baseline stops before browser execution; a portable
+recipe without local baseline evidence can still replay with change status
+`NOT_EVALUATED`.
+
 A successful Stage 4 run exits `0`, transitions through `EXECUTED` to `PASSED`,
 and writes `execution_report.json`, `trace.jsonl`, `browser.log.jsonl`,
 `browser.webm`, `timeline.json`, `demo.mp4`, `artifact_manifest.json`, the
@@ -203,6 +210,9 @@ model.
 - A recipe is portable input, not trusted execution authority. Replay validates
   its spec fingerprint, versions, schemas, and execution profile first, then
   delegates to the same deterministic pipeline and creates a fresh run ID.
+- UI change detection compares stable action/assertion IDs and structured
+  observations against the verified baseline. It reports change categories but
+  cannot rewrite selectors, assertions, run status, or footage.
 
 ## Repository map
 
@@ -231,7 +241,7 @@ non-sensitive literal fill data, constrains navigation to one origin, and does
 not inject browser credentials. The application-state assertion reads one
 validated top-level key and cannot execute spec-provided JavaScript. Fill
 values are omitted from action trace payloads, and browser diagnostic text is
-bounded and sanitized before persistence. Stage 7 reads provider credentials
+bounded and sanitized before persistence. Stage 8 reads provider credentials
 only from the environment and never stores them in planner inputs, candidates,
 traces, narration text, or artifacts. TTS receives only non-sensitive grounded
 phrases, and artifact metadata records the AI voice disclosure. Recipes contain

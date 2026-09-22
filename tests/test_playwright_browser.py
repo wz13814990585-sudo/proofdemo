@@ -143,6 +143,7 @@ def test_real_cli_replays_recipe_with_fresh_verified_run(
     )
     replay_report = json.loads((replay_dir / "execution_report.json").read_text(encoding="utf-8"))
     preflight = json.loads((replay_dir / "replay_preflight.json").read_text(encoding="utf-8"))
+    change_report = json.loads((replay_dir / "ui_change_report.json").read_text(encoding="utf-8"))
     replay_manifest = ArtifactManifest.model_validate_json(
         (replay_dir / "artifact_manifest.json").read_text(encoding="utf-8")
     )
@@ -154,10 +155,14 @@ def test_real_cli_replays_recipe_with_fresh_verified_run(
     assert replay_report["run"]["id"] != first_report["run"]["id"]
     assert preflight["status"] == "COMPATIBLE"
     assert preflight["source_run_id"] == first_report["run"]["id"]
+    assert change_report["status"] == "UNCHANGED"
+    assert change_report["findings"] == []
     assert ArtifactWriter.verify(replay_dir, replay_manifest) == ()
-    assert {ArtifactKind.REPLAY_PREFLIGHT, ArtifactKind.DEMO_RECIPE}.issubset(
-        {record.kind for record in replay_manifest.artifacts}
-    )
+    assert {
+        ArtifactKind.REPLAY_PREFLIGHT,
+        ArtifactKind.UI_CHANGE_REPORT,
+        ArtifactKind.DEMO_RECIPE,
+    }.issubset({record.kind for record in replay_manifest.artifacts})
 
 
 def test_real_adapter_maps_every_typed_locator(todo_url: str) -> None:

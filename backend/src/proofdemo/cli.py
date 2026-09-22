@@ -17,6 +17,13 @@ from proofdemo.adapters.openai_planner import OpenAIPlanner
 from proofdemo.adapters.openai_speech import OpenAISpeechAdapter
 from proofdemo.adapters.playwright_browser import PlaywrightBrowser
 from proofdemo.application.artifacts import ArtifactDeclaration, ArtifactWriteError, ArtifactWriter
+from proofdemo.application.change_detection import (
+    BaselineInvalidError,
+    BaselineMissingError,
+    ChangeDetectionContext,
+    ChangeDetectionError,
+    ChangeDetectionService,
+)
 from proofdemo.application.execution import ExecutionService
 from proofdemo.application.narration import NarrationRefusedError, NarrationService
 from proofdemo.application.planning import InvalidPlannerCandidate, PlanningService
@@ -57,6 +64,11 @@ def _parser() -> argparse.ArgumentParser:
     replay.add_argument("--narrate", action="store_true", help="add evidence-grounded AI speech")
     replay.add_argument("--tts-model", help="explicit OpenAI speech model; overrides environment")
     replay.add_argument("--voice", help="explicit OpenAI speech voice; overrides environment")
+    replay.add_argument(
+        "--baseline-artifacts",
+        type=Path,
+        help="source artifact directory; defaults to the recipe directory",
+    )
     plan = commands.add_parser("plan", help="create a reviewable DemoSpec candidate")
     plan.add_argument("source_url", help="same-origin application URL")
     plan.add_argument("--goal", required=True, help="natural-language demo goal")
@@ -78,6 +90,7 @@ def _execute_spec(
     args: argparse.Namespace,
     *,
     base_artifacts: tuple[ArtifactDeclaration, ...] = (),
+    change_context: ChangeDetectionContext | None = None,
 ) -> int:
     if not args.narrate and (args.tts_model or args.voice):
         print("Invalid narration options: --tts-model/--voice require --narrate", file=sys.stderr)
@@ -97,6 +110,9 @@ def _execute_spec(
         bundle = ExecutionService(PlaywrightBrowser()).execute_bundle(spec, args.artifacts)
         writer = ArtifactWriter()
         declarations = list(base_artifacts)
+        if change_context is not None:
+            change_report = ChangeDetectionService.compare(change_context, bundle.report)
+            declarations.append(ChangeDetectionService.write(change_report, args.artifacts))
         manifest = writer.persist(
             bundle,
             args.artifacts,
@@ -148,6 +164,9 @@ def _execute_spec(
     except RecipeRefusedError as error:
         print(f"Recipe failed: {error}", file=sys.stderr)
         return EXIT_BLOCKED
+    except ChangeDetectionError as error:
+        print(f"Change detection failed: {error}", file=sys.stderr)
+        return EXIT_BLOCKED
 
     print(f"{report.run.status}: {report_path}")
     if report.run.status in {DemoRunStatus.EXECUTED, DemoRunStatus.PASSED}:
@@ -185,7 +204,28 @@ def _replay_recipe(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return EXIT_INVALID_INPUT
-    return _execute_spec(recipe.spec, args, base_artifacts=(declaration,))
+    baseline_dir = args.baseline_artifacts or args.recipe.parent
+    try:
+        baseline = ChangeDetectionService.load_baseline(recipe, baseline_dir)
+        change_context = ChangeDetectionService.context(recipe, baseline)
+    except BaselineMissingError as error:
+        if args.baseline_artifacts is not None:
+            print(f"Invalid replay baseline: {error}", file=sys.stderr)
+            return EXIT_INVALID_INPUT
+        change_context = ChangeDetectionService.context(
+            recipe,
+            None,
+            unavailable_reason="source execution report is not available beside the recipe",
+        )
+    except BaselineInvalidError as error:
+        print(f"Invalid replay baseline: {error}", file=sys.stderr)
+        return EXIT_INVALID_INPUT
+    return _execute_spec(
+        recipe.spec,
+        args,
+        base_artifacts=(declaration,),
+        change_context=change_context,
+    )
 
 
 def _write_candidate(spec: DemoSpec, output: Path) -> None:

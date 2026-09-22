@@ -18,11 +18,11 @@ Application orchestration
 Domain  Adapters  Persistence
 ```
 
-Through Stage 7, the application layer contains a bounded planning service plus
+Through Stage 8, the application layer contains a bounded planning service plus
 focused deterministic execution, verification, tracing, artifact-persistence,
-composition, narration, recipe, and replay-preflight services. Browser, media,
-and provider mechanics sit behind application-owned ports implemented by
-Playwright Chromium, FFmpeg, and optional OpenAI adapters.
+composition, narration, recipe, replay-preflight, and change-detection services.
+Browser, media, and provider mechanics sit behind application-owned ports
+implemented by Playwright Chromium, FFmpeg, and optional OpenAI adapters.
 
 ## Technology Choices
 
@@ -86,6 +86,7 @@ rendering frameworks. Adapters implement application-defined boundaries.
 | Audio alignment | deterministic timeline policy and FFmpeg adapter |
 | Recipe compatibility | deterministic application policy |
 | Replay execution | existing execution/verification/media services |
+| UI change diagnosis | deterministic stable-ID evidence comparison |
 
 ## DemoSpec Execution Contract
 
@@ -252,6 +253,22 @@ A compatible replay passes the embedded DemoSpec to the same CLI orchestration,
 report is recorded in the new run's manifest; the replay receives a fresh run ID
 and emits a new recipe. Speech remains a separate explicit opt-in.
 
+## Change Detection Boundary
+
+Before comparison, `ChangeDetectionService` resolves the source execution report
+inside the selected baseline directory, verifies its SHA-256 against recipe
+provenance, parses the strict report schema, and requires matching source run,
+spec, and `PASSED` status. An explicit missing or invalid baseline stops before
+browser construction.
+
+After replay, the service compares baseline and current results by stable
+`scene_id/action_id` and `scene_id/assertion_id`. It classifies missing or failed
+actions, likely locator/selector failures, failed assertions, changed passing
+observations, and broken scene assumptions. No visual heuristic or model is
+used. `ui_change_report.json` is persisted even for a failed replay and never
+changes verification or lifecycle status. A copied portable recipe with no
+local baseline can replay with an explicit `NOT_EVALUATED` report.
+
 ## Configuration and Security
 
 Configuration comes from `.env` and `PROOFDEMO_` environment variables, with
@@ -265,13 +282,13 @@ Diagnostic logs are bounded and sanitized, and fill values are not copied into
 action trace payloads. Provider credentials are read only from environment
 configuration and are never admitted to DemoIntent, DemoSpec, traces, or
 artifacts. Speech receives only fixed, non-sensitive phrases. Recipes omit
-environment snapshots, browser session state, and credentials. Stage 7 does not
+environment snapshots, browser session state, and credentials. Stage 8 does not
 support browser credential injection.
 
 ## Deliberate Deferrals
 
 There are no model tools, model-written narration, autonomous exploration,
 locator repair, editorial transitions, zooms, overlays, captions, music,
-database, queue, UI-change comparison, repair, partial rerender, or cloud
-artifact store through Stage 7. Those are introduced only when their roadmap
+database, queue, model diagnosis, repair, partial rerender, or cloud artifact
+store through Stage 8. Those are introduced only when their roadmap
 stage supplies executable acceptance criteria.

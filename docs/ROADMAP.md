@@ -57,12 +57,12 @@ audio to scene timing without inventing success claims.
 Persist stable inputs and execution metadata, then replay a recipe with clear
 compatibility and provenance reporting.
 
-## Stage 8 — UI Change Detection (next)
+## Stage 8 — UI Change Detection (complete)
 
 Compare replay observations with prior successful evidence and identify broken
 selectors, assertions, or scene assumptions.
 
-## Stage 9 — Scene Repair and Partial Rerender
+## Stage 9 — Scene Repair and Partial Rerender (next)
 
 Propose bounded scene repairs, require appropriate verification, and rerender
 only invalidated portions of a demo.
