@@ -18,12 +18,23 @@ from proofdemo.application.execution import (
     ExecutionService,
     safe_artifact_path,
 )
-from proofdemo.application.rendering import CompositionRefusedError, CompositionService
+from proofdemo.application.narration import (
+    NarrationRefusedError,
+    NarrationService,
+    validate_narration_grounding,
+)
+from proofdemo.application.rendering import (
+    CompositionRefusedError,
+    CompositionService,
+    TimelineScene,
+    VideoTimeline,
+)
 from proofdemo.application.trace import TraceEventKind
 from proofdemo.application.verification import OutcomeStatus, VerificationStatus
-from proofdemo.cli import EXIT_FAILED, run
+from proofdemo.cli import EXIT_BLOCKED, EXIT_EXECUTED, EXIT_FAILED, run
 from proofdemo.domain.demo_run import DemoRunStatus
 from proofdemo.domain.demo_spec import DemoSpec, ElementTarget
+from proofdemo.ports.audio import AudioInfo, AudioMixCue
 from proofdemo.ports.browser import (
     AppStateObservation,
     BrowserActionError,
@@ -33,6 +44,7 @@ from proofdemo.ports.browser import (
     DownloadObservation,
 )
 from proofdemo.ports.render import MediaInfo, RenderSettings
+from proofdemo.ports.speech import SpeechDescriptor
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -144,6 +156,53 @@ class FakeRenderer:
         assert source.is_file()
         assert settings == RenderSettings()
         output.write_bytes(b"deterministic fake mp4")
+
+
+class FakeSpeech:
+    def __init__(self) -> None:
+        self.descriptor = SpeechDescriptor(
+            provider="fake-speech",
+            model="fixture-tts",
+            voice="fixture-voice",
+        )
+        self.calls: list[tuple[str, Path]] = []
+
+    def synthesize(self, text: str, output: Path) -> None:
+        self.calls.append((text, output))
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(b"fake pcm wav")
+
+
+class FakeAudioMixer:
+    def __init__(self, *, speech_duration_ms: int = 500) -> None:
+        self.speech_duration_ms = speech_duration_ms
+        self.cues: tuple[AudioMixCue, ...] = ()
+
+    def probe_audio(self, path: Path) -> AudioInfo:
+        if path.suffix == ".mp4":
+            return AudioInfo(duration_ms=1_000, sample_rate=48_000, channels=2, codec="aac")
+        return AudioInfo(
+            duration_ms=self.speech_duration_ms,
+            sample_rate=24_000,
+            channels=1,
+            codec="pcm_s16le",
+        )
+
+    def probe_video(self, path: Path) -> MediaInfo:
+        return MediaInfo(duration_ms=1_000, width=1920, height=1080, fps=30.0, codec="h264")
+
+    def mix(
+        self,
+        video: Path,
+        cues: tuple[AudioMixCue, ...],
+        output: Path,
+        *,
+        duration_ms: int,
+    ) -> None:
+        assert video.name == "demo.mp4"
+        assert duration_ms == 1_000
+        self.cues = cues
+        output.write_bytes(b"fake narrated mp4")
 
 
 def test_successful_execution_is_ordered_and_verified(tmp_path: Path) -> None:
@@ -357,6 +416,60 @@ def test_cli_returns_failed_exit_and_writes_evidence_report(
     }
 
 
+def test_cli_requires_explicit_speech_settings_before_browser_execution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec_path = tmp_path / "spec.json"
+    spec_path.write_text(json.dumps(load_example()), encoding="utf-8")
+    monkeypatch.delenv("PROOFDEMO_OPENAI_TTS_MODEL", raising=False)
+    monkeypatch.delenv("PROOFDEMO_OPENAI_TTS_VOICE", raising=False)
+    monkeypatch.setattr(
+        "proofdemo.cli.PlaywrightBrowser",
+        lambda: (_ for _ in ()).throw(AssertionError("browser must not start")),
+    )
+
+    exit_code = run(
+        [
+            "run",
+            str(spec_path),
+            "--artifacts",
+            str(tmp_path / "artifacts"),
+            "--narrate",
+        ]
+    )
+
+    assert exit_code == EXIT_BLOCKED
+
+
+def test_cli_never_calls_speech_without_narration_opt_in(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec_path = tmp_path / "spec.json"
+    spec_path.write_text(json.dumps(load_example()), encoding="utf-8")
+    monkeypatch.setenv("PROOFDEMO_OPENAI_TTS_MODEL", "configured-model")
+    monkeypatch.setenv("PROOFDEMO_OPENAI_TTS_VOICE", "configured-voice")
+    monkeypatch.setattr("proofdemo.cli.PlaywrightBrowser", FakeBrowser)
+    monkeypatch.setattr("proofdemo.cli.FFmpegRenderAdapter", FakeRenderer)
+    monkeypatch.setattr(
+        "proofdemo.cli.OpenAISpeechAdapter",
+        lambda *args: (_ for _ in ()).throw(AssertionError("speech must stay opt-in")),
+    )
+
+    exit_code = run(
+        [
+            "run",
+            str(spec_path),
+            "--artifacts",
+            str(tmp_path / "artifacts"),
+        ]
+    )
+
+    assert exit_code == EXIT_EXECUTED
+    assert not (tmp_path / "artifacts" / "narration.json").exists()
+
+
 def test_execution_bundle_trace_is_contiguous_and_omits_fill_value(tmp_path: Path) -> None:
     spec = DemoSpec.model_validate(load_example())
 
@@ -433,6 +546,9 @@ def test_artifact_writer_hashes_and_verifies_every_declared_file(tmp_path: Path)
     assert {record.kind for record in manifest.artifacts} == set(ArtifactKind) - {
         ArtifactKind.TIMELINE,
         ArtifactKind.FINAL_VIDEO,
+        ArtifactKind.NARRATION_TRACK,
+        ArtifactKind.NARRATION_AUDIO,
+        ArtifactKind.NARRATED_VIDEO,
     }
     assert len(manifest.artifacts) == 10
     assert all(len(record.sha256) == 64 for record in manifest.artifacts)
@@ -535,6 +651,131 @@ def test_composition_refuses_tampered_source_artifact(tmp_path: Path) -> None:
 
     with pytest.raises(CompositionRefusedError, match="integrity check failed"):
         CompositionService(FakeRenderer()).compose(bundle, manifest, tmp_path)
+
+
+def stage4_fixture(tmp_path: Path) -> tuple[object, object, object]:
+    bundle = ExecutionService(FakeBrowser()).execute_bundle(
+        DemoSpec.model_validate(load_example()),
+        tmp_path,
+    )
+    writer = ArtifactWriter()
+    source_manifest = writer.persist(bundle, tmp_path)
+    composition = CompositionService(FakeRenderer()).compose(bundle, source_manifest, tmp_path)
+    manifest = writer.persist(
+        bundle,
+        tmp_path,
+        extra_artifacts=composition.declarations,
+    )
+    return bundle, manifest, composition
+
+
+def test_narration_is_grounded_aligned_and_integrity_recorded(tmp_path: Path) -> None:
+    bundle, manifest, composition = stage4_fixture(tmp_path)
+    speech = FakeSpeech()
+    mixer = FakeAudioMixer()
+
+    narration = NarrationService(speech, mixer).narrate(
+        bundle,
+        manifest,
+        composition.timeline,
+        tmp_path,
+    )
+    final_manifest = ArtifactWriter().persist(
+        bundle,
+        tmp_path,
+        extra_artifacts=composition.declarations + narration.declarations,
+    )
+
+    cue = narration.track.cues[0]
+    assert cue.text == "AI-generated voice. Download verified."
+    assert cue.assertion_ids == ("launch-plan-downloaded",)
+    assert cue.start_ms == composition.timeline.scenes[0].start_ms
+    assert cue.end_ms == composition.timeline.scenes[0].end_ms
+    assert mixer.cues[0].source_duration_ms == 500
+    assert narration.output_video.codec == "h264"
+    assert narration.output_audio.codec == "aac"
+    assert {
+        ArtifactKind.NARRATION_TRACK,
+        ArtifactKind.NARRATION_AUDIO,
+        ArtifactKind.NARRATED_VIDEO,
+    }.issubset({record.kind for record in final_manifest.artifacts})
+    assert ArtifactWriter.verify(tmp_path, final_manifest) == ()
+
+
+def test_narration_rejects_tampered_stage4_artifacts(tmp_path: Path) -> None:
+    bundle, manifest, composition = stage4_fixture(tmp_path)
+    (tmp_path / "demo.mp4").write_bytes(b"tampered")
+
+    with pytest.raises(NarrationRefusedError, match="integrity check failed"):
+        NarrationService(FakeSpeech(), FakeAudioMixer()).narrate(
+            bundle,
+            manifest,
+            composition.timeline,
+            tmp_path,
+        )
+
+
+def test_narration_rejects_speech_that_cannot_fit_scene(tmp_path: Path) -> None:
+    bundle, manifest, composition = stage4_fixture(tmp_path)
+
+    with pytest.raises(NarrationRefusedError, match="exceeds its scene duration"):
+        NarrationService(FakeSpeech(), FakeAudioMixer(speech_duration_ms=2_001)).narrate(
+            bundle,
+            manifest,
+            composition.timeline,
+            tmp_path,
+        )
+
+    assert not (tmp_path / "narration" / "create_task.wav").exists()
+    assert not (tmp_path / "demo-narrated.mp4").exists()
+
+
+def test_narration_grounding_rejects_changed_claim_or_assertion(tmp_path: Path) -> None:
+    bundle, manifest, composition = stage4_fixture(tmp_path)
+    narration = NarrationService(FakeSpeech(), FakeAudioMixer()).narrate(
+        bundle,
+        manifest,
+        composition.timeline,
+        tmp_path,
+    )
+    cue = narration.track.cues[0]
+
+    changed_claim = narration.track.model_copy(
+        update={"cues": (cue.model_copy(update={"text": "Everything succeeded."}),)}
+    )
+    with pytest.raises(NarrationRefusedError, match="ungrounded claim"):
+        validate_narration_grounding(changed_claim, bundle, composition.timeline)
+
+    changed_reference = narration.track.model_copy(
+        update={"cues": (cue.model_copy(update={"assertion_ids": ("invented",)}),)}
+    )
+    with pytest.raises(NarrationRefusedError, match="unverified assertion"):
+        validate_narration_grounding(changed_reference, bundle, composition.timeline)
+
+
+def test_narration_refuses_failed_run_before_calling_speech(tmp_path: Path) -> None:
+    bundle = ExecutionService(FakeBrowser(text="wrong task")).execute_bundle(
+        DemoSpec.model_validate(load_example()),
+        tmp_path,
+    )
+    manifest = ArtifactWriter().persist(bundle, tmp_path)
+    timeline = VideoTimeline(
+        source_video_path="browser.webm",
+        source_sha256="a" * 64,
+        source_duration_ms=1_000,
+        scenes=(TimelineScene(scene_id="create_task", start_ms=0, end_ms=1_000),),
+    )
+    speech = FakeSpeech()
+
+    with pytest.raises(NarrationRefusedError, match="verified PASSED"):
+        NarrationService(speech, FakeAudioMixer()).narrate(
+            bundle,
+            manifest,
+            timeline,
+            tmp_path,
+        )
+
+    assert speech.calls == []
 
 
 def test_safe_artifact_path_rejects_traversal(tmp_path: Path) -> None:
