@@ -11,7 +11,8 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from proofdemo.adapters.playwright_browser import PlaywrightBrowser
-from proofdemo.application.execution import ExecutionReport, ExecutionService
+from proofdemo.application.artifacts import ArtifactWriteError, ArtifactWriter
+from proofdemo.application.execution import ExecutionService
 from proofdemo.domain.demo_run import DemoRunStatus
 from proofdemo.domain.demo_spec import DemoSpec
 
@@ -35,12 +36,6 @@ def _load_spec(path: Path) -> DemoSpec:
     return DemoSpec.model_validate(raw)
 
 
-def _write_report(report: ExecutionReport, artifact_dir: Path) -> Path:
-    report_path = artifact_dir / "execution_report.json"
-    report_path.write_text(report.model_dump_json(indent=2) + "\n", encoding="utf-8")
-    return report_path
-
-
 def run(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     if args.command != "run":
@@ -54,9 +49,11 @@ def run(argv: Sequence[str] | None = None) -> int:
 
     try:
         args.artifacts.mkdir(parents=True, exist_ok=True)
-        report = ExecutionService(PlaywrightBrowser()).execute(spec, args.artifacts)
-        report_path = _write_report(report, args.artifacts)
-    except OSError as error:
+        bundle = ExecutionService(PlaywrightBrowser()).execute_bundle(spec, args.artifacts)
+        ArtifactWriter().persist(bundle, args.artifacts)
+        report = bundle.report
+        report_path = args.artifacts / "execution_report.json"
+    except (ArtifactWriteError, OSError) as error:
         print(f"Could not write artifacts: {error}", file=sys.stderr)
         return EXIT_BLOCKED
 

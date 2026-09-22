@@ -35,10 +35,26 @@ class AppStateObservation:
     value: JsonValue = None
 
 
+@dataclass(frozen=True)
+class BrowserLogEntry:
+    """One bounded, sanitized browser diagnostic entry."""
+
+    level: str
+    message: str
+
+
+@dataclass(frozen=True)
+class BrowserSessionArtifacts:
+    """Artifacts finalized only after the browser session closes."""
+
+    video_path: Path | None = None
+    logs: tuple[BrowserLogEntry, ...] = ()
+
+
 class BrowserPort(Protocol):
     """Operations the application service needs from a browser runtime."""
 
-    def open(self, source_url: str) -> None:
+    def open(self, source_url: str, *, recording_dir: Path | None = None) -> None:
         """Start an isolated browser session constrained to the source origin."""
 
     def goto(self, url: str, *, timeout_ms: int) -> None:
@@ -71,5 +87,5 @@ class BrowserPort(Protocol):
     def application_state(self, key: str) -> AppStateObservation:
         """Read one top-level key from the opt-in JSON application-state hook."""
 
-    def close(self) -> None:
-        """Release all browser resources. Calling close repeatedly is safe."""
+    def close(self) -> BrowserSessionArtifacts:
+        """Release resources and return finalized session artifacts."""

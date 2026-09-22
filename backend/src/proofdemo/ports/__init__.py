@@ -3,7 +3,9 @@
 from proofdemo.ports.browser import (
     AppStateObservation,
     BrowserActionError,
+    BrowserLogEntry,
     BrowserPort,
+    BrowserSessionArtifacts,
     BrowserUnavailableError,
     DownloadObservation,
 )
@@ -11,7 +13,9 @@ from proofdemo.ports.browser import (
 __all__ = [
     "AppStateObservation",
     "BrowserActionError",
+    "BrowserLogEntry",
     "BrowserPort",
+    "BrowserSessionArtifacts",
     "BrowserUnavailableError",
     "DownloadObservation",
 ]

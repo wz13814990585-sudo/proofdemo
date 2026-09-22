@@ -4,17 +4,21 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from proofdemo.application.artifacts import ArtifactKind, ArtifactWriteError, ArtifactWriter
 from proofdemo.application.execution import (
     ActionResultStatus,
     ArtifactPathError,
+    EvidenceCapture,
     ExecutionService,
     safe_artifact_path,
 )
+from proofdemo.application.trace import TraceEventKind
 from proofdemo.application.verification import OutcomeStatus, VerificationStatus
 from proofdemo.cli import EXIT_FAILED, run
 from proofdemo.domain.demo_run import DemoRunStatus
@@ -22,6 +26,8 @@ from proofdemo.domain.demo_spec import DemoSpec, ElementTarget
 from proofdemo.ports.browser import (
     AppStateObservation,
     BrowserActionError,
+    BrowserLogEntry,
+    BrowserSessionArtifacts,
     BrowserUnavailableError,
     DownloadObservation,
 )
@@ -43,6 +49,7 @@ class FakeBrowser:
         visible: bool = True,
         text: str | None = "Prepare launch demo",
         download: DownloadObservation | None = None,
+        fail_evidence_capture: bool = False,
     ) -> None:
         self.startup_error = startup_error
         self.action_error = action_error
@@ -54,11 +61,14 @@ class FakeBrowser:
             completed=True,
             byte_count=20,
         )
+        self.fail_evidence_capture = fail_evidence_capture
+        self.recording_dir: Path | None = None
         self.calls: list[tuple[str, object]] = []
         self.closed = False
 
-    def open(self, source_url: str) -> None:
+    def open(self, source_url: str, *, recording_dir: Path | None = None) -> None:
         self.calls.append(("open", source_url))
+        self.recording_dir = recording_dir
         if self.startup_error is not None:
             raise self.startup_error
 
@@ -78,6 +88,8 @@ class FakeBrowser:
 
     def screenshot(self, path: Path, *, full_page: bool) -> None:
         self.calls.append(("screenshot", (path, full_page)))
+        if self.fail_evidence_capture and path.parent.name == "evidence":
+            raise BrowserActionError("evidence capture unavailable")
         path.write_bytes(b"fake png")
 
     def is_visible(self, target: ElementTarget, *, timeout_ms: int) -> bool:
@@ -107,9 +119,17 @@ class FakeBrowser:
             raise self.observation_error
         return AppStateObservation(found=True, value=1)
 
-    def close(self) -> None:
+    def close(self) -> BrowserSessionArtifacts:
         self.closed = True
         self.calls.append(("close", None))
+        video_path = None
+        if self.recording_dir is not None:
+            video_path = self.recording_dir / "browser.webm"
+            video_path.write_bytes(b"fake webm")
+        return BrowserSessionArtifacts(
+            video_path=video_path,
+            logs=(BrowserLogEntry(level="info", message="fixture ready"),),
+        )
 
 
 def test_successful_execution_is_ordered_and_verified(tmp_path: Path) -> None:
@@ -321,6 +341,122 @@ def test_cli_returns_failed_exit_and_writes_evidence_report(
         "expected": "Prepare launch demo",
         "observed": "wrong task",
     }
+
+
+def test_execution_bundle_trace_is_contiguous_and_omits_fill_value(tmp_path: Path) -> None:
+    spec = DemoSpec.model_validate(load_example())
+
+    bundle = ExecutionService(FakeBrowser()).execute_bundle(spec, tmp_path)
+
+    assert [event.sequence for event in bundle.trace_events] == list(
+        range(1, len(bundle.trace_events) + 1)
+    )
+    assert bundle.trace_events[-1].kind is TraceEventKind.RUN_TRANSITION
+    assert bundle.trace_events[-1].status == "PASSED"
+    action_trace = "\n".join(
+        event.model_dump_json()
+        for event in bundle.trace_events
+        if event.kind in {TraceEventKind.ACTION_STARTED, TraceEventKind.ACTION_FINISHED}
+    )
+    assert "Prepare launch demo" not in action_trace
+    assert any(event.kind is TraceEventKind.ASSERTION_EVALUATED for event in bundle.trace_events)
+    assert len(bundle.evidence_captures) == 5
+
+
+@pytest.mark.parametrize(
+    ("browser", "terminal_status"),
+    [
+        (FakeBrowser(text="wrong task"), "FAILED"),
+        (FakeBrowser(startup_error=BrowserUnavailableError("no browser")), "BLOCKED"),
+    ],
+)
+def test_trace_order_remains_valid_on_unsuccessful_paths(
+    browser: FakeBrowser, terminal_status: str, tmp_path: Path
+) -> None:
+    bundle = ExecutionService(browser).execute_bundle(
+        DemoSpec.model_validate(load_example()),
+        tmp_path,
+    )
+
+    assert [event.sequence for event in bundle.trace_events] == list(
+        range(1, len(bundle.trace_events) + 1)
+    )
+    run_events = [
+        event for event in bundle.trace_events if event.kind is TraceEventKind.RUN_TRANSITION
+    ]
+    assert run_events[-1].status == terminal_status
+
+
+def test_evidence_capture_failure_warns_without_changing_verification(tmp_path: Path) -> None:
+    bundle = ExecutionService(FakeBrowser(fail_evidence_capture=True)).execute_bundle(
+        DemoSpec.model_validate(load_example()),
+        tmp_path,
+    )
+
+    assert bundle.report.run.status is DemoRunStatus.PASSED
+    assert bundle.report.verification_status is VerificationStatus.PASSED
+    assert bundle.report.evidence_screenshot_paths == ()
+    assert len(bundle.report.artifact_warnings) == 5
+    assert (
+        sum(event.kind is TraceEventKind.ARTIFACT_CAPTURE_FAILED for event in bundle.trace_events)
+        == 5
+    )
+
+
+def test_artifact_writer_hashes_and_verifies_every_declared_file(tmp_path: Path) -> None:
+    bundle = ExecutionService(FakeBrowser()).execute_bundle(
+        DemoSpec.model_validate(load_example()),
+        tmp_path,
+    )
+
+    manifest = ArtifactWriter().persist(bundle, tmp_path)
+
+    assert (tmp_path / "execution_report.json").is_file()
+    assert (tmp_path / "trace.jsonl").is_file()
+    assert (tmp_path / "browser.log.jsonl").is_file()
+    assert (tmp_path / "artifact_manifest.json").is_file()
+    assert ArtifactWriter.verify(tmp_path, manifest) == ()
+    assert {record.kind for record in manifest.artifacts} == set(ArtifactKind)
+    assert len(manifest.artifacts) == 10
+    assert all(len(record.sha256) == 64 for record in manifest.artifacts)
+    evidence = [
+        record for record in manifest.artifacts if record.kind is ArtifactKind.EVIDENCE_SCREENSHOT
+    ]
+    assert all(record.scene_id and record.assertion_id for record in evidence)
+
+
+def test_manifest_verification_detects_changed_bytes(tmp_path: Path) -> None:
+    bundle = ExecutionService(FakeBrowser()).execute_bundle(
+        DemoSpec.model_validate(load_example()),
+        tmp_path,
+    )
+    manifest = ArtifactWriter().persist(bundle, tmp_path)
+    (tmp_path / "task-created.png").write_bytes(b"tampered bytes")
+
+    errors = ArtifactWriter.verify(tmp_path, manifest)
+
+    assert "byte count changed: task-created.png" in errors
+    assert "sha256 changed: task-created.png" in errors
+
+
+def test_artifact_writer_rejects_correlated_path_traversal(tmp_path: Path) -> None:
+    bundle = ExecutionService(FakeBrowser()).execute_bundle(
+        DemoSpec.model_validate(load_example()),
+        tmp_path,
+    )
+    unsafe = replace(
+        bundle,
+        evidence_captures=(
+            EvidenceCapture(
+                scene_id="create_task",
+                assertion_id="task-is-listed",
+                path="../escape.png",
+            ),
+        ),
+    )
+
+    with pytest.raises(ArtifactWriteError, match="escaped requested directory"):
+        ArtifactWriter().persist(unsafe, tmp_path)
 
 
 def test_safe_artifact_path_rejects_traversal(tmp_path: Path) -> None:

@@ -18,10 +18,11 @@ Application orchestration
 Domain  Adapters  Persistence
 ```
 
-Through Stage 2, the application layer contains focused deterministic execution
-and verification services. They drive an application-owned browser port, whose
-first adapter is a synchronous Playwright Chromium session, and turn narrow
-browser observations into structured assertion evidence and scene outcomes.
+Through Stage 3, the application layer contains focused deterministic execution,
+verification, tracing, and artifact-persistence services. They drive an
+application-owned browser port, whose first adapter is a synchronous Playwright
+Chromium session, and turn narrow browser observations into structured evidence
+and integrity-checked local artifacts.
 
 ## Technology Choices
 
@@ -72,7 +73,7 @@ rendering frameworks. Adapters implement application-defined boundaries.
 | Run state transitions | deterministic domain code |
 | Browser actions | deterministic Playwright adapter |
 | Assertions | deterministic verifier |
-| Trace/artifact persistence | deterministic services |
+| Trace/artifact persistence | deterministic trace recorder and artifact writer |
 | Video composition | deterministic render adapter |
 | Intent-to-DemoSpec planning | model behind a narrow boundary |
 | Ambiguous UI resolution | model-assisted, evidence recorded |
@@ -134,9 +135,29 @@ JavaScript.
 The Todo fixture under `examples/todo_app/` is deliberately independent of the
 ProofDemo frontend. It is a deterministic execution target, not product UI.
 
+## Trace and Artifact Boundary
+
+`TraceRecorder` produces immutable versioned events with contiguous sequence
+numbers, UTC timestamps, stable correlation IDs, outcomes, and JSON-compatible
+data. Action trace payloads include action type and outcome but never the fill
+value. Assertion trace payloads may contain the non-sensitive expected and
+observed evidence already authorized by DemoSpec.
+
+The Playwright adapter owns browser video finalization plus bounded, sanitized
+console and page-error collection. It returns these only after closing the
+browser context. `ExecutionService` coordinates automatic evidence screenshots
+without changing verifier results when an optional capture fails.
+
+`ArtifactWriter` atomically writes the report, trace, and browser log, then
+hashes those files together with requested screenshots, evidence screenshots,
+and browser video. `artifact_manifest.json` records SHA-256, byte count, media
+type, and correlation metadata for every other artifact; a manifest cannot
+cryptographically include itself. All artifact paths are resolved and checked
+against the requested root before use.
+
 ## DemoRun Lifecycle
 
-Stage 2 consumes this legal state graph:
+Stage 3 preserves this legal state graph:
 
 ```text
 CREATED -> VALIDATED -> RUNNING -> EXECUTED -> PASSED
@@ -162,12 +183,13 @@ The documented frontend and API defaults both use `127.0.0.1`. The API exposes
 only non-sensitive service metadata. Browser navigation is constrained to the
 validated source origin, screenshots cannot escape their artifact directory,
 and literal fills are restricted by contract to non-sensitive demo data. The
-application-state hook accepts a validated key as data rather than code. Stage
-2 does not support credential injection.
+application-state hook accepts a validated key as data rather than code.
+Diagnostic logs are bounded and sanitized, and fill values are not copied into
+action trace payloads. Stage 3 does not support credential injection.
 
 ## Deliberate Deferrals
 
-There is no full immutable trace, automatic evidence screenshot, recorder,
-artifact manifest, planner, model call, database, queue, narrator, TTS provider,
-or video renderer through Stage 2. Those are introduced only when their roadmap
-stage supplies executable acceptance criteria.
+There is no edited timeline, video composition, MP4 output, planner, model call,
+database, queue, narrator, TTS provider, recipe, or cloud artifact store through
+Stage 3. Those are introduced only when their roadmap stage supplies executable
+acceptance criteria.

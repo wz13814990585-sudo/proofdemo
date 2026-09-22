@@ -14,6 +14,7 @@ from playwright.sync_api import (
     Locator,
     Page,
     Playwright,
+    Video,
     sync_playwright,
 )
 from playwright.sync_api import (
@@ -35,9 +36,12 @@ from proofdemo.domain.demo_spec import (
 from proofdemo.ports.browser import (
     AppStateObservation,
     BrowserActionError,
+    BrowserLogEntry,
+    BrowserSessionArtifacts,
     BrowserUnavailableError,
     DownloadObservation,
 )
+from proofdemo.security import sanitize_diagnostic_text
 
 Origin = tuple[str, str, int]
 JSON_VALUE_ADAPTER: TypeAdapter[JsonValue] = TypeAdapter(JsonValue)
@@ -62,21 +66,45 @@ class PlaywrightBrowser:
         self._context: BrowserContext | None = None
         self._page: Page | None = None
         self._downloads: list[Download] = []
+        self._logs: list[BrowserLogEntry] = []
+        self._recording_target: Path | None = None
 
-    def open(self, source_url: str) -> None:
+    def open(self, source_url: str, *, recording_dir: Path | None = None) -> None:
         self._allowed_origin = _origin(source_url)
+        self._downloads = []
+        self._logs = []
+        self._recording_target = None
         try:
             self._playwright = sync_playwright().start()
             self._browser = self._playwright.chromium.launch(headless=self._headless)
-            self._context = self._browser.new_context(
-                viewport={"width": 1280, "height": 720},
-                locale="en-US",
-                accept_downloads=True,
-            )
+            if recording_dir is None:
+                self._context = self._browser.new_context(
+                    viewport={"width": 1280, "height": 720},
+                    locale="en-US",
+                    accept_downloads=True,
+                )
+            else:
+                recording_dir.mkdir(parents=True, exist_ok=True)
+                self._recording_target = recording_dir / "browser.webm"
+                self._context = self._browser.new_context(
+                    viewport={"width": 1280, "height": 720},
+                    locale="en-US",
+                    accept_downloads=True,
+                    record_video_dir=str(recording_dir),
+                    record_video_size={"width": 1280, "height": 720},
+                )
             self._page = self._context.new_page()
             self._page.on("download", lambda download: self._downloads.append(download))
+            self._page.on(
+                "console",
+                lambda message: self._record_log(message.type, message.text),
+            )
+            self._page.on(
+                "pageerror",
+                lambda error: self._record_log("pageerror", str(error)),
+            )
         except Exception as error:
-            self._shutdown()
+            self._shutdown(save_video=False)
             raise BrowserUnavailableError(f"Chromium could not start: {error}") from error
 
     def goto(self, url: str, *, timeout_ms: int) -> None:
@@ -195,10 +223,11 @@ class PlaywrightBrowser:
         except (PlaywrightError, ValidationError) as error:
             raise BrowserActionError(f"application-state observation failed: {error}") from error
 
-    def close(self) -> None:
-        errors = self._shutdown()
+    def close(self) -> BrowserSessionArtifacts:
+        errors, video_path = self._shutdown(save_video=True)
         if errors:
             raise BrowserUnavailableError(f"browser cleanup failed: {errors[0]}")
+        return BrowserSessionArtifacts(video_path=video_path, logs=tuple(self._logs))
 
     def _locator(self, target: ElementTarget) -> Locator:
         page = self._require_page()
@@ -223,11 +252,30 @@ class PlaywrightBrowser:
             raise BrowserUnavailableError("browser session is not open")
         return self._page
 
-    def _shutdown(self) -> list[Exception]:
+    def _record_log(self, level: str, message: str) -> None:
+        if len(self._logs) >= 1_000:
+            return
+        self._logs.append(
+            BrowserLogEntry(
+                level=level[:50],
+                message=sanitize_diagnostic_text(message),
+            )
+        )
+
+    def _shutdown(self, *, save_video: bool) -> tuple[list[Exception], Path | None]:
         errors: list[Exception] = []
+        video: Video | None = self._page.video if self._page is not None else None
+        video_path: Path | None = None
         if self._context is not None:
             try:
                 self._context.close()
+            except Exception as error:
+                errors.append(error)
+        if save_video and video is not None and self._recording_target is not None:
+            try:
+                source_path = Path(video.path())
+                source_path.replace(self._recording_target)
+                video_path = self._recording_target
             except Exception as error:
                 errors.append(error)
         if self._browser is not None:
@@ -246,4 +294,5 @@ class PlaywrightBrowser:
         self._playwright = None
         self._allowed_origin = None
         self._downloads = []
-        return errors
+        self._recording_target = None
+        return errors, video_path
