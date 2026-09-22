@@ -11,6 +11,8 @@ from proofdemo.domain.demo_spec import (
     DemoSpec,
     FillAction,
     GotoAction,
+    PauseAction,
+    ScreenshotAction,
 )
 from proofdemo.domain.exploration import ExplorationReport, PageObservation
 
@@ -82,6 +84,9 @@ class GroundingService:
                                         "BLOCKED",
                                         "clicked link destination was not visited",
                                     )
+                elif isinstance(action, (PauseAction, ScreenshotAction)):
+                    # These local presentation actions have no page target to invent.
+                    status = "GROUNDED"
                 checks.append(
                     GroundingCheck(
                         scene_id=scene.id,

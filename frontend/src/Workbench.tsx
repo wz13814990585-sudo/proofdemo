@@ -211,14 +211,14 @@ export default function Workbench() {
           <div className="form-row"><div><label htmlFor="language">语言</label>
             <select id="language" value={language} onChange={(event) => setLanguage(event.target.value)}>
               <option value="zh">中文</option><option value="en">English</option></select></div>
-            <div><label htmlFor="duration">目标时长</label>
+            <div><label htmlFor="duration">时长偏好</label>
               <select id="duration" value={duration} onChange={(event) => setDuration(event.target.value)}>
                 <option value="30">30 秒</option><option value="60">60 秒</option>
                 <option value="90">90 秒</option><option value="120">120 秒</option></select></div></div>
           <button className="primary-button" type="submit" disabled={sending || Boolean(active) || !online}>
             {sending ? "正在提交…" : active ? "演示进行中" : "生成演示 ↗"}</button>
         </form>
-        <p className="fine-print">仅用于你获授权访问的站点。探索只读且限于同源页面，不会登录或提交表单；动态控件可能无法预先观察。模型需要后端配置，未验证的结果不会生成成功视频。</p>
+        <p className="fine-print">仅用于你获授权访问的站点。探索只读且限于同源页面，不会登录或提交表单；动态控件可能无法预先观察。模型需要后端配置，未验证的结果不会生成成功视频。简短流程会留出可观看的操作停顿，但不会用静止画面硬凑所选时长。</p>
       </aside>
       <div className="results-column">
         <section className="panel progress-panel">

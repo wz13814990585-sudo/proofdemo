@@ -58,6 +58,43 @@ def todo_url() -> Iterator[str]:
         thread.join(timeout=2)
 
 
+@pytest.fixture
+def new_tab_url(tmp_path: Path) -> Iterator[str]:
+    root = tmp_path / "new-tab-site"
+    root.mkdir()
+    (root / "index.html").write_text(
+        """<!doctype html><html><body>
+        <a href="/h5.html" id="scripted-popup">Open H5 games</a>
+        <a href="https://example.com/" target="_blank">Leave site</a>
+        <script>
+        document.addEventListener('click', event => {
+          const link = event.target.closest('#scripted-popup');
+          if (link) {
+            event.preventDefault();
+            window.open(link.href, '_blank');
+          }
+        });
+        </script>
+        </body></html>""",
+        encoding="utf-8",
+    )
+    (root / "h5.html").write_text(
+        "<!doctype html><html><body><h1>H5 games</h1></body></html>",
+        encoding="utf-8",
+    )
+    handler = partial(QuietHandler, directory=str(root))
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    host, port = server.server_address
+    try:
+        yield f"http://{host}:{port}/"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
 def spec_for_url(url: str) -> DemoSpec:
     raw: dict[str, Any] = json.loads(
         (ROOT / "examples" / "demo_spec.json").read_text(encoding="utf-8")
@@ -241,6 +278,46 @@ def test_real_adapter_rejects_cross_origin_navigation(todo_url: str) -> None:
     try:
         with pytest.raises(BrowserActionError, match="leave the source origin"):
             browser.goto("https://example.com/", timeout_ms=1_000)
+    finally:
+        browser.close()
+
+
+def test_real_adapter_keeps_same_origin_new_tab_link_in_recorded_page(
+    new_tab_url: str, tmp_path: Path
+) -> None:
+    browser = PlaywrightBrowser()
+    browser.open(new_tab_url, recording_dir=tmp_path)
+    try:
+        browser.goto(new_tab_url, timeout_ms=5_000)
+        browser.click(
+            RoleTarget(strategy="role", role="link", name="Open H5 games"),
+            timeout_ms=5_000,
+        )
+
+        assert browser.current_url() == f"{new_tab_url}h5.html"
+        assert browser.is_visible(
+            RoleTarget(strategy="role", role="heading", name="H5 games"),
+            timeout_ms=1_000,
+        )
+    finally:
+        artifacts = browser.close()
+
+    assert artifacts.video_path == tmp_path / "browser.webm"
+    assert artifacts.video_path.stat().st_size > 0
+    assert list(tmp_path.glob("*.webm")) == [tmp_path / "browser.webm"]
+
+
+def test_real_adapter_still_blocks_cross_origin_new_tab_link(new_tab_url: str) -> None:
+    browser = PlaywrightBrowser()
+    browser.open(new_tab_url)
+    try:
+        browser.goto(new_tab_url, timeout_ms=5_000)
+        with pytest.raises(BrowserActionError):
+            browser.click(
+                RoleTarget(strategy="role", role="link", name="Leave site"),
+                timeout_ms=5_000,
+            )
+        assert browser.current_url() == new_tab_url
     finally:
         browser.close()
 

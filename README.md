@@ -1,25 +1,78 @@
 # ProofDemo
 
-ProofDemo 是一个经过验证的产品演示系统。它的长期目标是把 Web 应用 URL 和自然语言意图转换为完成度高、可重放的演示，并让其中的重要声明都有可观察证据支持。
+[中文](#中文) · [English](#english)
 
-产品流程为：
+ProofDemo turns a web-product workflow into a verified, replayable demo. It plans a typed `DemoSpec`, executes it in Chromium, checks deterministic assertions, preserves evidence, and renders video only after verification succeeds.
 
 ```text
-Intent -> Plan -> Execute -> Verify -> Capture -> Render
+Intent -> Explore -> Plan -> Execute -> Verify -> Capture -> Render
 ```
 
-本仓库完成了 **Engine V1**、**Stage 11 本地产品工作台**、**Stage 12 有证据约束的只读探索**和 **Stage 13 证据驱动的视频润色**：用户可从 UI 提交 URL 与目标，观察页面探索和执行、审查 DemoSpec/证据，并获取已验证的润色视频。探索只覆盖同源、可通过安全 GET 直接访问的页面；不是能登录、点击探索动态流程或理解任意陌生站点的通用 Browser Agent，也不是托管 SaaS。准确范围请参阅[当前阶段](docs/CURRENT_STAGE.md)。
+---
 
-## 前置要求
+## 中文
+
+### 项目简介
+
+ProofDemo 是一个经过验证的产品演示系统。用户可以在本地工作台输入产品 URL 和演示目标，查看只读探索、规划、浏览器执行和验证过程，并在成功后获得可播放的视频。
+
+当前仓库包含 Engine V1、本地产品工作台、有证据约束的同源只读探索，以及基于已验证轨迹的视频润色。它不是通用浏览器智能体，也不是托管 SaaS。准确范围参阅[当前阶段](docs/CURRENT_STAGE.md)。
+
+### 已验证的本地成功案例
+
+仓库保留两个完全本地、无需模型 API 的可重复案例：
+
+| 案例 | 结构 | 验证内容 | DemoSpec |
+| --- | --- | --- | --- |
+| Todo | 单页应用 | 填写并创建任务、列表文本、URL、下载、应用状态 | [`examples/demo_spec.json`](examples/demo_spec.json) |
+| Notes | 两页应用 | 同源页面导航、填写并发布笔记、结果文本和 URL | [`examples/notes_demo_spec.json`](examples/notes_demo_spec.json) |
+
+自动化验收会让这两个站点经过真实 Chromium、确定性断言、录制、FFmpeg 合成与视频润色。它们是本地产品流程证据，不代表 ProofDemo 对任意网站都能成功。
+
+#### 案例一：Todo
+
+终端 1：
+
+```bash
+source .venv/bin/activate
+python scripts/serve_todo_app.py
+```
+
+终端 2：
+
+```bash
+source .venv/bin/activate
+proofdemo run examples/demo_spec.json --artifacts artifacts/todo-demo
+```
+
+#### 案例二：Notes
+
+终端 1：
+
+```bash
+source .venv/bin/activate
+python -m http.server 4174 --bind 127.0.0.1 --directory examples/notes_app
+```
+
+终端 2：
+
+```bash
+source .venv/bin/activate
+proofdemo run examples/notes_demo_spec.json \
+  --artifacts artifacts/notes-demo \
+  --allow-risky-actions
+```
+
+Notes 中的 `Publish note` 会被保守的安全规则识别为具名发布操作，因此 CLI 要求本次运行显式批准。批准不会被重放或后续运行继承。
+
+### 环境要求
 
 - Python 3.11 或更高版本
 - Node.js 20.19 或更高版本
 - npm 10 或更高版本
-- 支持 H.264 编码的 FFmpeg 和 FFprobe
+- 支持 H.264 的 FFmpeg 和 FFprobe
 
-## 后端设置
-
-创建隔离的 Python 环境，并安装项目及开发工具：
+### 安装
 
 ```bash
 python3 -m venv .venv
@@ -28,133 +81,72 @@ python -m pip install --upgrade pip
 python -m pip install -e '.[dev]'
 python -m playwright install chromium
 cp .env.example .env
+
+npm --prefix frontend install
+cp frontend/.env.example frontend/.env.local
 ```
 
-确定性管线不需要 API 密钥。规划器默认使用 OpenAI：在进程环境中设置 `OPENAI_API_KEY`，并通过 `PROOFDEMO_OPENAI_MODEL` 或 `--model` 指定模型。要试用 DeepSeek，请先撤销任何已在聊天或其他公开位置暴露的密钥，再创建新密钥，并仅在启动 ProofDemo 的本机终端设置：
+### 启动本地工作台
+
+确定性 CLI 案例不需要模型密钥。工作台的自然语言规划需要显式配置一个提供方。
+
+DeepSeek 示例（密钥只留在当前终端，不要写进仓库或聊天）：
 
 ```bash
 export PROOFDEMO_PLANNER_PROVIDER=deepseek
-export PROOFDEMO_DEEPSEEK_MODEL=deepseek-flash
-export DEEPSEEK_API_KEY="<新生成的本地密钥>"
-```
-
-不要把真实密钥写进仓库或发到聊天中。DeepSeek 选项使用固定的 `https://api.deepseek.com` 地址；即使本机同时配置了 OpenAI 环境变量，也不会把 DeepSeek 密钥交给 OpenAI 默认端点。模型名称需要与你的 DeepSeek 账户实际可用的型号一致；接口和型号以 [DeepSeek 官方文档](https://api-docs.deepseek.com/) 为准。切回默认提供方可设置 `PROOFDEMO_PLANNER_PROVIDER=openai` 并使用 OpenAI 的模型及密钥。ProofDemo 不会替你选择浮动变化的默认模型。
-
-按需启用旁白还需要明确设置 `PROOFDEMO_OPENAI_TTS_MODEL` 和 `PROOFDEMO_OPENAI_TTS_VOICE`（或对应的 CLI 参数）。语音提供方只会接收已经批准的旁白文本。适配器使用的 WAV 语音端点记录在 [OpenAI 文本转语音指南](https://developers.openai.com/api/docs/guides/text-to-speech)中。
-
-启动 API：
-
-```bash
+export PROOFDEMO_DEEPSEEK_MODEL=YOUR_DEEPSEEK_MODEL
+read -s "DEEPSEEK_API_KEY?请输入密钥（输入时不会显示）: "
+echo
+export DEEPSEEK_API_KEY
 proofdemo-api
 ```
 
-API 运行在 `http://127.0.0.1:8000`。本地任务保存在 `PROOFDEMO_JOB_ROOT`（默认 `artifacts/jobs`）。任务写入请求要求 `X-ProofDemo-Client: studio`，且浏览器请求的 Origin 必须与配置的前端源站一致；这只是防跨站请求边界，不是用户认证。不要把 API 直接暴露到公网。可通过以下命令验证：
+OpenAI 示例：
+
+```bash
+export PROOFDEMO_PLANNER_PROVIDER=openai
+export PROOFDEMO_OPENAI_MODEL=YOUR_OPENAI_MODEL
+export OPENAI_API_KEY="YOUR_LOCAL_KEY"
+proofdemo-api
+```
+
+API 默认运行在 `http://127.0.0.1:8000`。可以检查：
 
 ```bash
 curl http://127.0.0.1:8000/health
 ```
 
-开发环境可在 `http://127.0.0.1:8000/docs` 访问交互式 API 文档。当 `PROOFDEMO_ENVIRONMENT=production` 时，该文档会被禁用。
-
-## 前端设置
-
-在第二个终端中运行：
+在第二个终端启动前端：
 
 ```bash
-npm --prefix frontend install
-cp frontend/.env.example frontend/.env.local
 npm --prefix frontend run dev
 ```
 
-打开 `http://127.0.0.1:5173`。前端可输入产品 URL、演示目标、受众、语言和时长，点击“生成演示”，查看只读探索页面/控件与锚定覆盖、规划后的 DemoSpec、实时浏览器截图与操作事件、逐场景验证、视频编辑计划，以及仅在验证通过后可播放/下载的润色视频。具名高风险操作会停在单独审批态，凭据填充会被阻止。可在 `frontend/.env.local` 中设置 `VITE_API_BASE_URL`，覆盖默认 API URL。
+打开 `http://127.0.0.1:5173`。API 和前端终端都需要保持运行。工作台会展示探索页面、规划结果、证据锚定、实时截图、操作事件、逐场景断言和最终视频。只有验证结果为 `PASSED` 且产物完整性复核通过时，视频才会交付。
 
-工作台需要按选定提供方配置模型和进程环境中的密钥：OpenAI 使用 `PROOFDEMO_OPENAI_MODEL` / `OPENAI_API_KEY`，DeepSeek 使用 `PROOFDEMO_DEEPSEEK_MODEL` / `DEEPSEEK_API_KEY`；缺少配置会显示 `BLOCKED`。它先在全新无凭据的 Chromium 会话中观察最多 5 个同源页面，再让模型仅从已观察的安全链接中建议下一页，并以版本化报告约束 DemoSpec。导航必须指向实际访问的页面，点击/填充必须精确匹配该页已观察的唯一控件；否则在执行前阻止。探索不提交表单、不点击、不访问跨源资源，并阻止非 GET 请求及重定向；这无法保证目标站点的 GET 端点本身无副作用。不要对敏感或未获授权站点运行。真实 Chromium/FFmpeg 验收覆盖两个本地应用，模型适配器仅用假客户端测试，尚无真实模型对任意站点成功率的证据。
+### 关键行为边界
 
-成功执行后，工作台以已验证基础视频为来源，生成独立的 `polished_demo.mp4`：实际捕获到点击/填充目标坐标时添加平滑光标与短时自动缩放；每个已通过场景添加标题字幕、验证标注与场景过渡。无可靠坐标时保留静态镜头。`polish_plan.json`、`polish_captions.json`、覆盖层 PNG 和基础 `demo.mp4` 会连同润色版进入产物清单。当前字幕是已验证场景的屏幕文字，不是语音转写或动态逐词字幕；工作台不会自动混入 CLI 的可选 TTS。目标时长和语言会交给规划器，但不能保证恰好生成所选时长或完整本地化视频。实现使用离线 Chromium 文本资产与 FFmpeg；本地 FFmpeg 不具备文本滤镜，当前也没有可证明需要 Remotion 的编辑模板需求。润色失败会明确阻塞任务，不把基础视频冒充润色成功。
+- 模型只能提出候选 DemoSpec，不能直接操作浏览器或宣布成功。
+- 工作台最多只读探索 5 个同源页面；不会登录、注入凭据或提交探索表单。
+- 点击/填写必须与实际观察到的唯一控件匹配，否则在执行前阻止。
+- 同源普通链接在当前录制页面打开；跨源导航仍被阻止，下载链接保留下载语义。
+- `EXECUTED` 只表示操作完成；全部确定性断言通过后才能得到 `PASSED`。
+- 失败或阻塞的任务不会生成冒充成功的视频。
+- 当前语言和时长是规划偏好，不保证精确时长或完整本地化。
+- 视频润色使用真实交互坐标和已验证场景；没有证据时不会虚构缩放、结果或声明。
 
-## 运行确定性示例
+### 产物与重放
 
-若要根据目标创建候选 DemoSpec，但不启动浏览器：
-
-```bash
-proofdemo plan https://app.example.test/ \
-  --goal "Create a launch task" \
-  --model YOUR_EXPLICIT_MODEL \
-  --output candidate.json
-```
-
-CLI 的 `plan` 与 `run` 仍是两条显式命令，必须在运行前审查候选；CLI `plan` 不执行 Stage 12 探索，并按 `PROOFDEMO_PLANNER_PROVIDER` 选择规划器。工作台的“生成演示”则会对证据锚定且安全评估为 `ALLOWED` 的计划继续执行；具名风险操作要求在 UI 中重新审核并批准。模型调用不使用工具，也不持久化对话；探索的逐页候选选择和最终 DemoSpec 是分开的有界结构化输出请求，模型不能直接操控浏览器。DeepSeek 通过其 [Responses API](https://api-docs.deepseek.com/guides/responses_api/) 接收目标和有界页面观察；输出仍必须通过 ProofDemo 的确定性锚定与验证。可选语音合成和修复建议仍只支持 OpenAI，不会因选择 DeepSeek 而自动改用 DeepSeek。DeepSeek 适配器目前只用假客户端测试，尚未使用新密钥做真实调用或测量陌生站点成功率。
-
-对于仓库内置的确定性示例，请在一个终端中启动独立的 Todo fixture：
-
-```bash
-python scripts/serve_todo_app.py
-```
-
-然后在另一个终端中执行内置 DemoSpec：
-
-```bash
-proofdemo run examples/demo_spec.json --artifacts artifacts/todo-demo
-```
-
-任何浏览器启动前，ProofDemo 都会写入 `safety_assessment.json`。类似凭据的填充操作始终会被阻止。具名的破坏性、金融、账户或生产环境操作必须通过 `--allow-risky-actions` 获得当次命令的重新批准；重放和修复不会继承此前批准。
-
-若要在同一次运行成功验证后添加 AI 语音：
-
-```bash
-proofdemo run examples/demo_spec.json \
-  --artifacts artifacts/todo-demo \
-  --narrate \
-  --tts-model YOUR_EXPLICIT_TTS_MODEL \
-  --voice YOUR_EXPLICIT_VOICE
-```
-
-仅配置凭据不会自动启用旁白；必须提供 `--narrate`。第一条语音提示会声明该声音由 AI 生成。
-
-每次成功运行还会写入 `demo_recipe.json`。可将其重放到新的产物目录：
+一次成功的确定性运行会生成执行报告、轨迹、浏览器日志、证据截图、`browser.webm`、1080p H.264 `demo.mp4`、产物清单和 `demo_recipe.json`。重放命令示例：
 
 ```bash
 proofdemo replay artifacts/todo-demo/demo_recipe.json \
   --artifacts artifacts/todo-demo-replay
 ```
 
-浏览器启动前，`replay_preflight.json` 会记录配方/源运行的来源及每项兼容性问题。重放旁白仍需通过相同的 `--narrate`、`--tts-model` 和 `--voice` 参数按需启用。
+配方是可移植输入，不是执行授权。重放会重新检查兼容性、安全策略、断言和产物来源。
 
-如果源 `execution_report.json` 与配方位于同一目录，重放还会验证配方中记录的哈希，并写入 `ui_change_report.json`。使用 `--baseline-artifacts PATH` 可选择其他基线目录。显式指定的基线缺失或无效时，流程会在浏览器执行前停止；不带本地基线证据的可移植配方仍可重放，但变化状态为 `NOT_EVALUATED`。
-
-对于结果为 `CHANGED` 的重放，可以提出一个有界的场景修复，但不执行它：
-
-```bash
-proofdemo propose-repair artifacts/todo-demo/demo_recipe.json \
-  --change-artifacts artifacts/todo-demo-changed \
-  --scene create_task \
-  --hint "The submit button is now named Create task" \
-  --model YOUR_EXPLICIT_MODEL \
-  --output repair-candidate.json
-```
-
-审核候选结果后，再明确批准执行：
-
-```bash
-proofdemo apply-repair artifacts/todo-demo/demo_recipe.json repair-candidate.json \
-  --change-artifacts artifacts/todo-demo-changed \
-  --baseline-artifacts artifacts/todo-demo \
-  --artifacts artifacts/todo-demo-repaired
-```
-
-完整通过验证的修复会写入 `partial_render.json` 和 `demo-repaired.mp4`。未变化场景的时间范围来自基线视频；只有被诊断的场景使用新录制素材。
-
-一次成功的 Stage 4 运行会以 `0` 退出，依次从 `EXECUTED` 转换到 `PASSED`，并写入 `execution_report.json`、`trace.jsonl`、`browser.log.jsonl`、`browser.webm`、`timeline.json`、`demo.mp4`、`artifact_manifest.json`、请求的截图以及关联证据截图。最终 MP4 为 1920×1080、30 fps 的 H.264/yuv420p。`EXECUTED` 始终只表示浏览器操作已完成；只有确定性验证器可以产生 `PASSED`，并且只有经过验证且完整性检查通过的运行才能被合成。
-
-成功运行还会写入 `demo_recipe.json`，其中嵌入规范化 DemoSpec 及其指纹、固定执行 profile、schema 要求，以及源执行报告和最终视频的哈希。
-
-按需启用旁白的运行还会写入 `narration.json`、每场景一个 PCM WAV，以及包含 H.264 视频和 AAC 音频的 `demo-narrated.mp4`。每条提示都会引用一个已通过断言，并保留准确的已验证场景边界。
-
-CLI 对操作级 `FAILED` 结果使用退出码 `1`；对被阻塞的浏览器基础设施或产物输出使用 `2`；对无效输入规范使用 `64`。
-
-## 验证
-
-激活 Python 环境并安装前端依赖后，运行：
+### 验证项目
 
 ```bash
 proofdemo benchmark --output artifacts/benchmark_report.json
@@ -165,51 +157,19 @@ mypy backend/src
 npm --prefix frontend run build
 ```
 
-修改领域模型后导出共享 DemoSpec schema：
+权威 DemoSpec 模型位于 Python 领域层。修改模型后运行 `python scripts/export_schema.py`；schema 漂移会导致测试失败。
 
-```bash
-python scripts/export_schema.py
-```
-
-如果 `shared/schemas/demo_spec.schema.json` 与权威 Pydantic 模型不一致，测试会失败。
-
-离线基准通过应用服务覆盖验证成功、断言失败、操作失败和基础设施阻塞。V1 要求这个固定测试集上的预期终态结果、证据覆盖率和轨迹完整性全部达到满分；这是发布门禁，并不代表对任意网站或提供方质量的声明。
-
-## 领域边界
-
-- DemoSpec `1.2` 为 Scene、Action 和 Assertion 使用稳定 ID，并要求每个场景至少包含一项断言。
-- `source_url` 定义允许访问的源站；每个 `goto` 都必须停留在该源站。
-- `pause` 是演示延时，不是页面就绪检查。
-- 字面填充值只能是非敏感演示数据。
-- 浏览器适配器会在导航前和重定向后强制执行 DemoSpec 源站约束。
-- 确定性断言覆盖元素可见性、文本包含、精确规范化 URL、已完成下载，以及一个声明的 JSON 应用状态键。
-- `EXECUTED` 表示操作已完成，并不表示断言已通过。
-- `PASSED` 要求每个场景的所有断言都带有结构化证据并通过。
-- 采集失败会变成显式产物警告和轨迹事件；不会改写确定性断言结果。
-- 产物清单会为该运行的所有其他产物记录相对路径、媒体类型、字节数、SHA-256 摘要和稳定关联 ID。
-- 时间线策略由项目掌控；FFmpeg 只是用于探测、缩放、加黑边和编码的窄适配器。
-- 规划器只能提出 DemoSpec 候选。ProofDemo 会重新验证候选、保持请求的源站，并要求单独、明确地执行 run 命令。
-- 旁白只使用根据已通过断言类型选择的、由项目定义的短句。TTS 可以合成这些短句，但不能创作或扩展声明。
-- 在有界语速策略下无法放入所属场景的语音会被拒绝；不会被截断、移动，也不能覆盖另一个场景。
-- 配方是可移植输入，不是可信执行授权。重放会先验证规范指纹、版本、schema 和执行 profile，再委托给同一确定性管线并创建新的运行 ID。
-- UI 变化检测根据稳定的操作/断言 ID，将结构化观察与已验证基线比较。它会报告变化类别，但不能改写选择器、断言、运行状态或素材。
-- 修复只能替换一个场景中已诊断的现有 click/fill 操作或 element/text 断言的类型化目标。应用已审核建议后，会重新运行完整 DemoSpec；只有状态为 `PASSED` 后才能进行局部渲染。
-- 规范最多包含 50 个场景；每场景最多 100 个操作和 100 个断言；操作和断言总数分别最多 500 个；声明的暂停总时长最多五分钟。
-- 安全评估是确定性的，并且先于浏览器构建。每次实际执行的产物清单都包含其决策和任何明确批准。
-
-## 仓库结构
+### 仓库结构与文档
 
 ```text
-backend/src/proofdemo/  API, planning/execution/verification/media, and adapters
-frontend/               React and TypeScript frontend
-shared/schemas/         generated cross-runtime contracts
-examples/               valid inputs and the deterministic Todo fixture
-scripts/                deterministic developer utilities
-tests/                  API and domain tests
-docs/                   product, architecture, roadmap, and stage scope
+backend/src/proofdemo/  API、规划、执行、验证、媒体与适配器
+frontend/               React/TypeScript 本地工作台
+shared/schemas/         生成的跨运行时契约
+examples/               本地 Todo/Notes fixture 与有效 DemoSpec
+scripts/                确定性开发脚本
+tests/                  领域、API、浏览器与媒体测试
+docs/                   产品、架构、路线图和阶段范围
 ```
-
-## 项目文档
 
 - [产品规格](docs/PROJECT_SPEC.md)
 - [架构](docs/ARCHITECTURE.md)
@@ -217,9 +177,183 @@ docs/                   product, architecture, roadmap, and stage scope
 - [当前阶段](docs/CURRENT_STAGE.md)
 - [威胁模型](docs/THREAT_MODEL.md)
 - [运维指南](docs/OPERATIONS.md)
-- [发布清单](docs/RELEASE_CHECKLIST.md)
 - [安全策略](SECURITY.md)
 
-## 安全
+### 安全
 
-绝不能提交凭据，也不能将其放入 DemoIntent 或 DemoSpec 文件。`.env` 已被忽略；`.env.example` 只记录非秘密配置。V1 只接受非敏感字面填充数据，将导航限制在单一源站，并且不注入浏览器凭据。应用状态断言只能读取一个经过验证的顶层键，不能执行规范提供的 JavaScript。操作轨迹载荷会省略填充值，浏览器诊断文本会在持久化前进行有界清理和脱敏。提供方适配器只从环境读取凭据，绝不会将其存入规划器输入、候选结果、轨迹、旁白文本或产物。TTS 只接收非敏感、基于证据的固定短句，产物元数据会记录 AI 语音声明。配方不包含环境快照、Cookie、存储状态或凭据。安全筛查有意采用保守策略，但无法推断误导性或不透明目标标签背后的真实效果；仍然需要人工审查 DemoSpec。
+绝不能提交密钥，也不能把凭据写入 DemoIntent、DemoSpec、日志或产物。`.env` 已被忽略，提供方适配器只从环境读取凭据。请只对你有权访问的非敏感站点运行 ProofDemo；页面截图和视频可能包含目标页面自身展示的信息。
+
+---
+
+## English
+
+### Overview
+
+ProofDemo is a verified product-demo system. A local user can enter a product URL and a goal, observe read-only exploration, planning, browser execution, and verification, and receive a playable video after the run succeeds.
+
+The repository contains Engine V1, the local product studio, evidence-constrained same-origin exploration, and evidence-driven video polish. It is neither a general browser agent nor a hosted SaaS. See the [current stage](docs/CURRENT_STAGE.md) for the exact scope.
+
+### Verified local success cases
+
+The repository includes two fully local, reproducible cases that require no model API:
+
+| Case | Shape | Verified behavior | DemoSpec |
+| --- | --- | --- | --- |
+| Todo | Single-page app | Fill and create a task, list text, URL, download, and application state | [`examples/demo_spec.json`](examples/demo_spec.json) |
+| Notes | Two-page app | Same-origin navigation, fill and publish a note, result text, and URL | [`examples/notes_demo_spec.json`](examples/notes_demo_spec.json) |
+
+Automated acceptance runs both sites through real Chromium, deterministic assertions, recording, FFmpeg composition, and video polish. These cases are evidence for the local product path, not a claim that every website will work.
+
+#### Case 1: Todo
+
+Terminal 1:
+
+```bash
+source .venv/bin/activate
+python scripts/serve_todo_app.py
+```
+
+Terminal 2:
+
+```bash
+source .venv/bin/activate
+proofdemo run examples/demo_spec.json --artifacts artifacts/todo-demo
+```
+
+#### Case 2: Notes
+
+Terminal 1:
+
+```bash
+source .venv/bin/activate
+python -m http.server 4174 --bind 127.0.0.1 --directory examples/notes_app
+```
+
+Terminal 2:
+
+```bash
+source .venv/bin/activate
+proofdemo run examples/notes_demo_spec.json \
+  --artifacts artifacts/notes-demo \
+  --allow-risky-actions
+```
+
+The conservative safety policy classifies `Publish note` as a named publishing action, so the CLI requires explicit approval for that run. Approval is not inherited by replay or later runs.
+
+### Requirements
+
+- Python 3.11 or newer
+- Node.js 20.19 or newer
+- npm 10 or newer
+- FFmpeg and FFprobe with H.264 support
+
+### Installation
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e '.[dev]'
+python -m playwright install chromium
+cp .env.example .env
+
+npm --prefix frontend install
+cp frontend/.env.example frontend/.env.local
+```
+
+### Start the local studio
+
+The deterministic CLI examples do not require a model key. Natural-language planning in the studio requires an explicitly configured provider.
+
+DeepSeek example (keep the key only in the current terminal; never commit or paste it into chat):
+
+```bash
+export PROOFDEMO_PLANNER_PROVIDER=deepseek
+export PROOFDEMO_DEEPSEEK_MODEL=YOUR_DEEPSEEK_MODEL
+read -s "DEEPSEEK_API_KEY?Enter the key (input is hidden): "
+echo
+export DEEPSEEK_API_KEY
+proofdemo-api
+```
+
+OpenAI example:
+
+```bash
+export PROOFDEMO_PLANNER_PROVIDER=openai
+export PROOFDEMO_OPENAI_MODEL=YOUR_OPENAI_MODEL
+export OPENAI_API_KEY="YOUR_LOCAL_KEY"
+proofdemo-api
+```
+
+The API listens on `http://127.0.0.1:8000` by default. Check it with:
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+Start the frontend in a second terminal:
+
+```bash
+npm --prefix frontend run dev
+```
+
+Open `http://127.0.0.1:5173`. Keep both API and frontend terminals running. The studio displays explored pages, the planned spec, grounding coverage, live screenshots, action events, per-scene assertions, and the final video. Video is delivered only when the result is `PASSED` and artifact integrity is revalidated.
+
+### Key behavior boundaries
+
+- A model may only propose a DemoSpec candidate; it cannot operate the browser or declare success.
+- The studio explores at most five same-origin pages with read-only navigation; it does not log in, inject credentials, or submit exploration forms.
+- Click and fill targets must match unique observed controls or execution is blocked beforehand.
+- Ordinary same-origin links open in the recorded page; cross-origin navigation remains blocked and download links retain download semantics.
+- `EXECUTED` means only that operations finished; every deterministic assertion must pass before the run becomes `PASSED`.
+- Failed or blocked jobs never produce a video presented as successful.
+- Language and duration are planning preferences, not exact guarantees.
+- Video polish uses real interaction coordinates and verified scenes; it does not invent zooms, outcomes, or claims when evidence is absent.
+
+### Artifacts and replay
+
+A successful deterministic run produces an execution report, trace, browser log, evidence screenshots, `browser.webm`, a 1080p H.264 `demo.mp4`, an artifact manifest, and `demo_recipe.json`. Example replay:
+
+```bash
+proofdemo replay artifacts/todo-demo/demo_recipe.json \
+  --artifacts artifacts/todo-demo-replay
+```
+
+A recipe is portable input, not execution authorization. Replay rechecks compatibility, safety policy, assertions, and artifact provenance.
+
+### Validate the project
+
+```bash
+proofdemo benchmark --output artifacts/benchmark_report.json
+python -m pytest
+ruff format --check .
+ruff check .
+mypy backend/src
+npm --prefix frontend run build
+```
+
+The Python domain model is the authoritative DemoSpec source. Run `python scripts/export_schema.py` after changing it; schema drift fails the test suite.
+
+### Repository layout and documentation
+
+```text
+backend/src/proofdemo/  API, planning, execution, verification, media, adapters
+frontend/               React/TypeScript local studio
+shared/schemas/         generated cross-runtime contracts
+examples/               local Todo/Notes fixtures and valid DemoSpecs
+scripts/                deterministic development utilities
+tests/                  domain, API, browser, and media tests
+docs/                   product, architecture, roadmap, and stage scope
+```
+
+- [Product specification](docs/PROJECT_SPEC.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Roadmap](docs/ROADMAP.md)
+- [Current stage](docs/CURRENT_STAGE.md)
+- [Threat model](docs/THREAT_MODEL.md)
+- [Operations guide](docs/OPERATIONS.md)
+- [Security policy](SECURITY.md)
+
+### Security
+
+Never commit keys or place credentials in DemoIntent, DemoSpec, logs, or artifacts. `.env` is ignored and provider adapters read credentials only from the environment. Run ProofDemo only against non-sensitive sites you are authorized to access; screenshots and videos may contain information displayed by the target page itself.

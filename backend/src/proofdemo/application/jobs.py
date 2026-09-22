@@ -11,9 +11,15 @@ from tempfile import NamedTemporaryFile
 from threading import Lock, Thread
 from uuid import UUID, uuid4
 
+from openai import APIStatusError
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from proofdemo.adapters.deepseek import DeepSeekLinkAdvisor, DeepSeekPlanner
+from proofdemo.adapters.deepseek import (
+    DeepSeekIncompleteCandidateError,
+    DeepSeekInvalidCandidateError,
+    DeepSeekLinkAdvisor,
+    DeepSeekPlanner,
+)
 from proofdemo.adapters.ffmpeg_polish import FFmpegVideoPolisher
 from proofdemo.adapters.ffmpeg_render import FFmpegRenderAdapter
 from proofdemo.adapters.openai_exploration import OpenAILinkAdvisor
@@ -24,6 +30,7 @@ from proofdemo.application.artifacts import ArtifactKind, ArtifactManifest, Arti
 from proofdemo.application.execution import ExecutionReport, ExecutionService, safe_artifact_path
 from proofdemo.application.exploration import ExplorationService
 from proofdemo.application.grounding import GroundingReport, GroundingService
+from proofdemo.application.pacing import pace_studio_spec
 from proofdemo.application.planning import InvalidPlannerCandidate, PlanningService
 from proofdemo.application.recipes import RecipeService
 from proofdemo.application.rendering import CompositionService
@@ -39,7 +46,7 @@ from proofdemo.domain.recipe import demo_spec_sha256
 from proofdemo.domain.video_polish import VideoPolishPlan
 from proofdemo.ports.browser import BrowserPort
 from proofdemo.ports.explorer import ExplorationUnavailableError, ExplorerPort, LinkAdvisorPort
-from proofdemo.ports.planner import PlannerPort, PlannerUnavailableError
+from proofdemo.ports.planner import PlannerPort, PlannerResponseError, PlannerUnavailableError
 from proofdemo.ports.render import RenderPort, RenderUnavailableError
 from proofdemo.ports.video_polish import PolishRenderError, PolishUnavailableError, VideoPolishPort
 
@@ -391,12 +398,13 @@ class JobManager:
         self._set(job_id, JobStatus.PLANNING, "Creating a reviewable DemoSpec")
         try:
             result = PlanningService(planner or self._planner_factory()).plan(intent, exploration)
+            spec = pace_studio_spec(result.spec, intent.approximate_duration_seconds)
             self._atomic_text(
                 self._job_path(job_id, "demo_spec.json"),
-                result.spec.model_dump_json(indent=2) + "\n",
+                spec.model_dump_json(indent=2) + "\n",
             )
             if exploration is not None:
-                grounding = GroundingService.assess(result.spec, exploration)
+                grounding = GroundingService.assess(spec, exploration)
                 grounding_path = self._job_path(job_id, "grounding_report.json")
                 self._atomic_text(
                     grounding_path,
@@ -406,8 +414,8 @@ class JobManager:
                     job_id,
                     JobStatus.PLANNING,
                     "Checking candidate against observed controls",
-                    spec_id=result.spec.id,
-                    spec_sha256=demo_spec_sha256(result.spec),
+                    spec_id=spec.id,
+                    spec_sha256=demo_spec_sha256(spec),
                     grounding_status=grounding.status,
                     grounding_sha256=sha256(grounding_path.read_bytes()).hexdigest(),
                 )
@@ -418,14 +426,14 @@ class JobManager:
                         "Plan contains actions not grounded in observed pages",
                     )
                     return
-            assessment = SafetyService.assess(result.spec, approval_acknowledged=False)
+            assessment = SafetyService.assess(spec, approval_acknowledged=False)
             SafetyService.write(assessment, self._job_path(job_id, "run"))
             self._set(
                 job_id,
                 JobStatus.PLANNING,
                 "DemoSpec created and safety checked",
-                spec_id=result.spec.id,
-                spec_sha256=demo_spec_sha256(result.spec),
+                spec_id=spec.id,
+                spec_sha256=demo_spec_sha256(spec),
                 safety_decision=assessment.decision,
                 safety_findings=assessment.findings,
             )
@@ -636,14 +644,26 @@ class JobManager:
     def _safe_error(self, prefix: str, error: Exception) -> str:
         if isinstance(error, PlannerUnavailableError):
             if self._planner_provider == "deepseek":
-                return (
-                    f"{prefix}: configure PROOFDEMO_DEEPSEEK_MODEL and "
-                    "DEEPSEEK_API_KEY, then check DeepSeek connectivity"
-                )
+                if isinstance(error.__cause__, APIStatusError):
+                    return (
+                        f"{prefix}: DeepSeek API rejected the planner request "
+                        f"(HTTP {error.__cause__.status_code}); check model/API compatibility"
+                    )
+                if "not configured" not in str(error):
+                    return f"{prefix}: DeepSeek planner unavailable; check provider connectivity"
+                return f"{prefix}: configure PROOFDEMO_DEEPSEEK_MODEL and DEEPSEEK_API_KEY"
             return (
                 "Planning blocked: configure PROOFDEMO_OPENAI_MODEL and OPENAI_API_KEY, "
                 "then check provider connectivity"
             )
+        if isinstance(error, DeepSeekIncompleteCandidateError):
+            return f"{prefix}: DeepSeek response was empty or incomplete"
+        if isinstance(error, DeepSeekInvalidCandidateError):
+            detail = ", ".join(error.diagnostics)
+            suffix = f" ({detail})" if detail else ""
+            return f"{prefix}: DeepSeek JSON did not match the DemoSpec contract{suffix}"
+        if isinstance(error, PlannerResponseError) and self._planner_provider == "deepseek":
+            return f"{prefix}: DeepSeek returned no valid DemoSpec candidate"
         if isinstance(error, ExplorationUnavailableError) and self._planner_provider == "deepseek":
             return "Exploration blocked: check DeepSeek model, API key, and connectivity"
         if isinstance(error, InvalidPlannerCandidate):

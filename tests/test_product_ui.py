@@ -25,7 +25,7 @@ from proofdemo.api import create_app
 from proofdemo.application.artifacts import ArtifactWriter
 from proofdemo.application.jobs import JobManager, JobStatus
 from proofdemo.config import Settings
-from proofdemo.domain.demo_spec import DemoSpec
+from proofdemo.domain.demo_spec import DemoSpec, PauseAction
 from proofdemo.domain.exploration import ExplorationReport
 from proofdemo.domain.planning import DemoIntent
 from proofdemo.ports.planner import PlannerCandidate
@@ -431,6 +431,15 @@ def test_workbench_generates_polished_video_through_real_local_stack(
         assert job is not None
         assert job.status is JobStatus.PASSED
         assert job.video_kind == "POLISHED_VIDEO"
+        pauses = [
+            action.duration_ms
+            for scene in jobs.spec(job.id).scenes
+            for action in scene.actions
+            if isinstance(action, PauseAction)
+        ]
+        assert pauses == [3_000, 3_000, 3_000]
+        assert all(check.status == "GROUNDED" for check in jobs.grounding(job.id).checks)
+        assert 9_000 <= jobs.polish_plan(job.id).output_duration_ms <= 15_000
         assert jobs.video_path(job.id).stat().st_size > 0
         assert ArtifactWriter.verify(jobs.video_path(job.id).parent, jobs.manifest(job.id)) == ()
         assert page_errors == []

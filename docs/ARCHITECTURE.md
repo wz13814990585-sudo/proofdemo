@@ -30,7 +30,7 @@ Domain  Adapters  Persistence
 - **Playwright**：在应用自有端口之后提供 Chromium 适配器。
 - **FFmpeg/FFprobe**：在渲染端口之后提供通用媒体探测、缩放、加黑边和 H.264 编码。时间线策略由 ProofDemo 掌控。
 - **OpenAI Responses API**：在规划器端口之后提供可选结构化规划；使用明确模型，不使用工具，也不保存对话。
-- **DeepSeek Responses API**：可明确选择的规划与探索链接建议适配器；复用同一类型化输出契约，但独立读取 `DEEPSEEK_API_KEY` 并固定连接 DeepSeek 地址。
+- **DeepSeek Responses API**：可明确选择的规划与探索链接建议适配器；使用 JSON object 输出模式，在规划提示中提供权威 DemoSpec JSON 格式契约，并在本地重新校验完整类型化响应；独立读取 `DEEPSEEK_API_KEY` 并固定连接 DeepSeek 地址。
 - **OpenAI Speech API**：可选地在语音端口之后将已批准提示文本合成为 WAV。它不会接收断言载荷，也不会创作旁白。
 
 ## 仓库布局
@@ -102,6 +102,8 @@ scene_id/assertion_id
 
 浏览器端口只包含 `open`、`goto`、`click`、`fill`、`pause`、`screenshot`、确定性观察和幂等 `close` 操作。Playwright 适配器负责定位器转换、浏览器生命周期、Playwright 错误转换、下载观察、受限应用状态读取，以及运行时同源强制。应用服务负责顺序、比较、证据模型、运行/场景转换、结果关联和受限截图路径。
 
+对于解析为当前允许源站、且不带下载语义的真实 HTML 链接，`click` 在同一受录制页面中导航到该链接的实际 `href`。这避免目标站点脚本或新标签页策略把后续验证、截图和单一视频源留在旧页面。跨源链接仍由运行时路由门禁阻止；按钮、表单控件和非链接目标仍执行真实点击，下载链接仍保留下载事件语义。该规范化只决定浏览上下文，不改变目标 URL，也不能绕过探索锚定、源站限制或断言。
+
 浏览器启动和运行时可用性错误产生 `BLOCKED`。确定性失败的请求操作或可观察预期产生 `FAILED`。每个场景的每项断言都通过后，运行才会从 `EXECUTED` 转换为 `PASSED`。浏览器资源会在最终 `PASSED` 转换前以及每条失败路径上关闭。
 
 DemoSpec `1.2` 支持 `element_visible`、`text_contains`、`url_equals`、`download_completed` 和 `app_state_equals`。证据在稳定的 `scene_id/assertion_id` 键下保存兼容 JSON 的预期值和观察值。应用状态断言只能从显式启用的 `window.__PROOFDEMO_STATE__` 对象读取一个经过验证的顶层键；规范不能提供可执行 JavaScript。
@@ -110,9 +112,13 @@ DemoSpec `1.2` 支持 `element_visible`、`text_contains`、`url_equals`、`down
 
 ## 规划器边界
 
-`PlanningService` 接收严格的 `DemoIntent` 和一个 `PlannerPort`。OpenAI 或显式选择的 DeepSeek 适配器进行一次结构化输出请求，其解析类型就是权威 DemoSpec 模型。它不具备浏览器、轨迹、执行或产物能力，也不能进入 DemoRun 生命周期。DeepSeek 适配器只从进程环境读取 `DEEPSEEK_API_KEY`，固定使用 `https://api.deepseek.com`；不会复用 OpenAI 密钥或任意 `OPENAI_BASE_URL`。工作台探索链接建议与最终规划使用同一选定提供方；CLI `plan` 使用该提供方但不探索。TTS 与修复建议目前仍为 OpenAI 专属。
+`PlanningService` 接收严格的 `DemoIntent` 和一个 `PlannerPort`。OpenAI 使用 SDK 的 DemoSpec 结构化解析；显式选择的 DeepSeek 使用其 Responses JSON object 模式，并在规划提示中提供由权威 Pydantic 模型生成的 DemoSpec JSON Schema。这个 Schema 是给模型的输出格式说明，而非服务端强约束；完整响应仍须在本地验证，无效或不完整响应分别阻塞。两者都不具备浏览器、轨迹、执行或产物能力，也不能进入 DemoRun 生命周期。DeepSeek 适配器只从进程环境读取 `DEEPSEEK_API_KEY`，固定使用 `https://api.deepseek.com`；不会复用 OpenAI 密钥或任意 `OPENAI_BASE_URL`。工作台探索链接建议与最终规划使用同一选定提供方；CLI `plan` 使用该提供方但不探索。TTS 与修复建议目前仍为 OpenAI 专属。
 
 ProofDemo 通过领域验证重新构建返回的模型，并拒绝规范化源站与请求源站不同的候选结果。该结果明确是需要审核的建议：`proofdemo plan` 原子写入候选文件，而 `proofdemo run` 始终是单独的用户操作。缺少模型或提供方配置只会阻塞规划；手工编写的 DemoSpec 无需访问模型，仍可进入确定性管线。
+
+DeepSeek 的有证据规划使用完整持久化探索报告的确定性压缩视图：所有实际访问的页面 URL/标题及至多 8 个标题层级仍在输入中；每页按目标名称、目标 URL 和已访问链接优先挑选至多 24 个有唯一目标的控件，并标明省略数量。截图哈希和与规划无关的警告不发给模型；完整报告、截图哈希和全部控件仍由本地 `GroundingService` 与任务完整性检查掌控。若候选仅在 DemoSpec、Scene、Action 或 Assertion 的 `id` 字符串格式上不合规，适配器可按所在位置确定性地分配 ASCII 标识，同时保留原本合规的标识并避开它们；不会补齐缺失标识、转换非字符串、修改任何可执行字段或跳过完整 Pydantic 校验。候选仍无效时，仅把经过字段白名单处理的路径和错误类型传入一次额外修正请求；不回传失败原文、任意字段名或值，不增加浏览器权限。第二次仍无效则带有限安全诊断 `BLOCKED`；不完整响应和提供方请求错误不自动重试。
+
+工作台在保存候选 DemoSpec 前，可根据用户的时长偏好确定性地插入有限的 `pause` 操作：只选已经存在的导航/输入/点击之后的观看节点，总新增停顿最多 9 秒、最多 4 处，并遵守每个场景和整份规范的操作预算。停顿属于可审查的规范操作，会进入正常的锚定、安全、执行和录制路径；不会改变断言或凭空增加产品交互。CLI `plan` 不自动插入观看停顿。该策略改善短流程可读性，不保证视频达到时长偏好；不能通过延长最后一帧伪造更多内容。
 
 ## 轨迹与产物边界
 
@@ -200,6 +206,8 @@ Stage 11 当时的工作台没有站点探索能力，单次规划仍依赖用�
 ## Stage 12 — 有证据约束的只读探索（已完成）
 
 仅工作台任务在规划前运行 `ExplorationService`；CLI 的 `plan` 不改变。隔离的 `PlaywrightExplorer` 使用全新无凭据上下文，阻止非 GET、跨源请求、下载链接与所有重定向，不点击或填充页面。应用层额外筛掉风险路径、下载扩展名和可能包含秘密的查询键；最多访问 5 页，保留每页最多 120 个可见控件、50 个候选链接，采用总时间预算和逐页导航超时。选定提供方的结构化链接建议只能选择精确位于已观察安全候选集合中的 URL；页面内容始终视为不可信数据。
+
+链接建议的格式契约要求带 `url` 字段的对象（值为候选 URL 或 `null`），而不是裸字符串。若建议格式无效、但已有可靠页面观察，探索保留已访问页的截图和未访问链接数，以 `PARTIAL` 交给正常规划与锚定流程；格式错误不能自动选择链接。模型建议了集合外 URL、浏览器观察失败或没有可靠页面时仍为 `BLOCKED`。
 
 每页实际 URL、标题、有限标题层级、可操作控件的唯一定位、导航来源与截图哈希写入版本化 `exploration_report.json`。报告中的 `COMPLETE` 只表示当前安全候选已访问完，不表示理解整个产品。工作台可查看页面、截图、警告和进度；页面截图本身可能含敏感内容，必须只使用获授权的非敏感站点。GET 也可能被目标服务器设计成有副作用，因此“只读”仅表示 ProofDemo 不有意提交表单或发出写方法，不能构成对站点状态绝对不变的保证。
 

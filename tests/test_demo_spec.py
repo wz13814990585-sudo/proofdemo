@@ -30,6 +30,15 @@ def test_example_demo_spec_is_valid() -> None:
     assert spec.scenes[0].assertions[0].id == "task-is-listed"
 
 
+def test_notes_example_demo_spec_is_valid() -> None:
+    spec = DemoSpec.model_validate(load_json(ROOT / "examples" / "notes_demo_spec.json"))
+
+    assert spec.id == "notes_demo"
+    assert str(spec.source_url) == "http://127.0.0.1:4174/"
+    assert spec.scenes[0].actions[1].id == "open-composer"
+    assert spec.scenes[0].assertions[0].id == "note-is-published"
+
+
 def test_demo_spec_accepts_explicit_pause_action() -> None:
     raw_spec = example_spec()
     raw_spec["scenes"][0]["actions"].insert(

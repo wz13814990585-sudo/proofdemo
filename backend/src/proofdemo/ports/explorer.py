@@ -12,7 +12,11 @@ from proofdemo.domain.planning import DemoIntent
 
 
 class ExplorationUnavailableError(RuntimeError):
-    """The isolated browser could not inspect the requested page."""
+    """A browser or link-advisor prerequisite for exploration is unavailable."""
+
+
+class InvalidLinkAdvice(ExplorationUnavailableError):
+    """A model response could not be parsed as a structured link choice."""
 
 
 class InvalidLinkChoice(ValueError):

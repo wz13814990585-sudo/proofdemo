@@ -20,8 +20,14 @@ from proofdemo.application.jobs import JobManager, JobRecord, JobStatus
 from proofdemo.domain.demo_spec import DemoSpec, LabelTarget, RoleTarget
 from proofdemo.domain.exploration import ExplorationReport, ExplorationStatus
 from proofdemo.domain.planning import DemoIntent
-from proofdemo.ports.explorer import ControlSnapshot, ExplorationUnavailableError, PageSnapshot
-from proofdemo.ports.planner import PlannerUnavailableError
+from proofdemo.ports.browser import BrowserUnavailableError
+from proofdemo.ports.explorer import (
+    ControlSnapshot,
+    ExplorationUnavailableError,
+    InvalidLinkAdvice,
+    PageSnapshot,
+)
+from proofdemo.ports.planner import PlannerCandidate, PlannerUnavailableError
 
 SOURCE = "https://product.example.test/"
 DETAIL = "https://product.example.test/create"
@@ -120,6 +126,27 @@ def grounded_spec(*, target: str = "Save", navigation: str = DETAIL) -> DemoSpec
     )
 
 
+def source_only_spec() -> DemoSpec:
+    return DemoSpec.model_validate(
+        {
+            "schema_version": "1.2",
+            "id": "source_only",
+            "title": "Observe the product",
+            "goal": "Show the visited page",
+            "source_url": SOURCE,
+            "scenes": [
+                {
+                    "id": "home",
+                    "title": "Product home",
+                    "goal": "Show the home page",
+                    "actions": [{"id": "open", "type": "goto", "url": SOURCE}],
+                    "assertions": [{"id": "url", "type": "url_equals", "expected_url": SOURCE}],
+                }
+            ],
+        }
+    )
+
+
 @pytest.mark.parametrize(
     "candidate",
     [
@@ -162,6 +189,91 @@ def test_invalid_advisor_choice_blocks_without_visiting_it(tmp_path: Path) -> No
     assert browser.visits == [SOURCE]
     assert report.unvisited_link_count == 1
     assert "unobserved" in report.warnings[0]
+
+
+def test_invalid_structured_link_advice_is_partial_and_keeps_grounding(
+    tmp_path: Path,
+) -> None:
+    class InvalidAdvisor:
+        def choose(
+            self, intent: DemoIntent, pages: tuple, candidates: tuple[str, ...]
+        ) -> str | None:
+            raise InvalidLinkAdvice("provider-secret-detail")
+
+    browser = Browser()
+    report = ExplorationService(browser, InvalidAdvisor()).explore(intent(), tmp_path)
+
+    assert report.status is ExplorationStatus.PARTIAL
+    assert browser.visits == [SOURCE]
+    assert browser.closed
+    assert report.unvisited_link_count == 1
+    assert "remaining safe links were not visited" in report.warnings[0]
+    assert "provider-secret-detail" not in str(report.warnings)
+    assert GroundingService.assess(source_only_spec(), report).status == "GROUNDED"
+    assert GroundingService.assess(grounded_spec(), report).status == "BLOCKED"
+
+
+def test_link_advisor_request_failure_still_blocks_exploration(tmp_path: Path) -> None:
+    class UnavailableAdvisor:
+        def choose(
+            self, intent: DemoIntent, pages: tuple, candidates: tuple[str, ...]
+        ) -> str | None:
+            raise ExplorationUnavailableError("link advisor request failed")
+
+    browser = Browser()
+    report = ExplorationService(browser, UnavailableAdvisor()).explore(intent(), tmp_path)
+
+    assert report.status is ExplorationStatus.BLOCKED
+    assert browser.visits == [SOURCE]
+    assert report.unvisited_link_count == 1
+
+
+def test_partial_exploration_continues_to_planning(tmp_path: Path) -> None:
+    class InvalidAdvisor:
+        def choose(
+            self, intent: DemoIntent, pages: tuple, candidates: tuple[str, ...]
+        ) -> str | None:
+            raise InvalidLinkAdvice("malformed link choice")
+
+    class PartialPlanner:
+        def plan_grounded(self, intent: DemoIntent, report: ExplorationReport) -> PlannerCandidate:
+            assert report.status is ExplorationStatus.PARTIAL
+            assert len(report.pages) == 1
+            return PlannerCandidate(spec=source_only_spec(), provider="fixture", model="fixture")
+
+    class NoExecutionBrowser:
+        def open(self, source_url: str, *, recording_dir: Path | None = None) -> None:
+            raise BrowserUnavailableError("fixture execution stop")
+
+        def close(self) -> None:
+            pass
+
+    jobs = JobManager(
+        tmp_path,
+        planner_factory=PartialPlanner,
+        explorer_factory=Browser,
+        advisor_factory=InvalidAdvisor,
+        browser_factory=NoExecutionBrowser,
+    )
+    created = jobs.create(intent())
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        job = jobs.get(created.id)
+        if job is not None and job.status in {
+            JobStatus.PASSED,
+            JobStatus.FAILED,
+            JobStatus.BLOCKED,
+        }:
+            break
+        time.sleep(0.01)
+
+    job = jobs.get(created.id)
+    assert job is not None
+    assert job.status is JobStatus.BLOCKED
+    assert "Exploration could not ground" not in job.message
+    assert jobs.exploration(created.id).status is ExplorationStatus.PARTIAL
+    assert jobs.grounding(created.id).status == "GROUNDED"
+    assert jobs.spec(created.id) == source_only_spec()
 
 
 def test_budget_exhaustion_is_partial(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

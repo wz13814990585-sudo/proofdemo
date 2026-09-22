@@ -135,7 +135,27 @@ class PlaywrightBrowser:
     def click(self, target: ElementTarget, *, timeout_ms: int) -> None:
         self._blocked_navigation = False
         try:
-            self._locator(target).click(timeout=timeout_ms)
+            locator = self._locator(target)
+            link_url = locator.evaluate(
+                """
+                element => {
+                  if (element instanceof HTMLAnchorElement && !element.hasAttribute('download')) {
+                    return element.href;
+                  }
+                  return null;
+                }
+                """,
+                timeout=timeout_ms,
+            )
+            if (
+                isinstance(link_url, str)
+                and self._allowed_origin is not None
+                and _origin(link_url) == self._allowed_origin
+            ):
+                locator.click(timeout=timeout_ms, trial=True)
+                self.goto(link_url, timeout_ms=timeout_ms)
+                return
+            locator.click(timeout=timeout_ms)
             if self._blocked_navigation:
                 raise BrowserActionError("click navigation was blocked by the same-origin policy")
             if (

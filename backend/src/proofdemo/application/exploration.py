@@ -23,6 +23,7 @@ from proofdemo.domain.planning import DemoIntent
 from proofdemo.ports.explorer import (
     ExplorationUnavailableError,
     ExplorerPort,
+    InvalidLinkAdvice,
     InvalidLinkChoice,
     LinkAdvisorPort,
 )
@@ -112,7 +113,16 @@ class ExplorationService:
                 if not pages:
                     next_url = source
                 else:
-                    suggested = self._advisor.choose(intent, tuple(pages), tuple(sorted(frontier)))
+                    try:
+                        suggested = self._advisor.choose(
+                            intent, tuple(pages), tuple(sorted(frontier))
+                        )
+                    except InvalidLinkAdvice:
+                        warnings.append(
+                            "Link advisor returned an invalid choice; "
+                            "remaining safe links were not visited"
+                        )
+                        break
                     if suggested is None:
                         break
                     if suggested not in frontier:

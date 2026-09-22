@@ -1,0 +1,77 @@
+{
+  "schema_version": "1.2",
+  "id": "notes_demo",
+  "title": "Publish a team note",
+  "goal": "Open the local notes fixture, publish a short update, and verify it appears.",
+  "source_url": "http://127.0.0.1:4174/",
+  "audience": "Product evaluation team",
+  "language": "en",
+  "approximate_duration_seconds": 20,
+  "scenes": [
+    {
+      "id": "publish_note",
+      "title": "Publish the update",
+      "goal": "Navigate to the composer and publish a note named Sprint status.",
+      "actions": [
+        {
+          "id": "open-notes",
+          "type": "goto",
+          "url": "http://127.0.0.1:4174/"
+        },
+        {
+          "id": "open-composer",
+          "type": "click",
+          "target": {
+            "strategy": "role",
+            "role": "link",
+            "name": "Write a note"
+          }
+        },
+        {
+          "id": "enter-note-title",
+          "type": "fill",
+          "target": {
+            "strategy": "label",
+            "label": "Note title"
+          },
+          "value": "Sprint status"
+        },
+        {
+          "id": "publish-note",
+          "type": "click",
+          "target": {
+            "strategy": "role",
+            "role": "button",
+            "name": "Publish note"
+          }
+        },
+        {
+          "id": "watch-published-note",
+          "type": "pause",
+          "duration_ms": 3000
+        },
+        {
+          "id": "capture-published-note",
+          "type": "screenshot",
+          "name": "published-note"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "note-is-published",
+          "type": "text_contains",
+          "target": {
+            "strategy": "test_id",
+            "test_id": "published-note"
+          },
+          "expected_text": "Sprint status"
+        },
+        {
+          "id": "composer-url-remains",
+          "type": "url_equals",
+          "expected_url": "http://127.0.0.1:4174/compose.html"
+        }
+      ]
+    }
+  ]
+}
