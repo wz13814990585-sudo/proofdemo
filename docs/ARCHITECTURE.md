@@ -18,9 +18,10 @@ Application orchestration
 Domain  Adapters  Persistence
 ```
 
-Only the frontend shell, API health surface, hardened domain models, and
-test/tooling foundation exist through Stage 0.1. The lower application layers
-are boundaries for later stages, not implemented subsystems.
+Through Stage 1, the application layer contains one deterministic execution
+service. It drives an application-owned browser port, whose first adapter is a
+synchronous Playwright Chromium session. Assertions remain inert input data
+until Stage 2.
 
 ## Technology Choices
 
@@ -31,15 +32,15 @@ are boundaries for later stages, not implemented subsystems.
 - **Pydantic Settings** for validated `.env` and process-environment loading.
 - **React, TypeScript, and Vite** for a small, independently runnable frontend.
 - **pytest** for backend/domain tests; **Ruff** and **mypy** for static checks.
-- **Playwright** is the intended browser adapter beginning in Stage 1, but is
-  deliberately absent through Stage 0.1.
+- **Playwright** supplies the Stage 1 Chromium adapter behind an
+  application-owned port.
 - **Remotion** is the intended deterministic render adapter in a later stage,
   but is deliberately absent through Stage 0.1.
 
 ## Repository Layout
 
 ```text
-backend/src/proofdemo/  Python package and API
+backend/src/proofdemo/  Python package, API, application, ports, and adapters
 frontend/               React application
 shared/schemas/         generated cross-runtime contracts
 examples/               checked-in valid product inputs
@@ -99,9 +100,29 @@ that origin. Cross-origin workflows require a future explicit security design.
 `pause` is a bounded presentation delay. It must not be used as a substitute
 for Playwright readiness or locator auto-waiting.
 
+## Stage 1 Execution Boundary
+
+`ExecutionService` accepts an already validated DemoSpec, a `BrowserPort`, and
+an artifact directory. It executes scene actions in declared order and emits a
+small `ExecutionReport` with the immutable DemoRun, ordered action results,
+requested screenshot paths, and `verification_status: NOT_RUN`.
+
+The browser port contains only `open`, `goto`, `click`, `fill`, `pause`,
+`screenshot`, and idempotent `close` operations. The Playwright adapter owns
+locator translation, browser lifecycle, Playwright error translation, and
+runtime same-origin enforcement. The application service owns ordering,
+run-state transitions, result correlation, and contained screenshot paths.
+
+Browser startup and runtime availability errors produce `BLOCKED`. A requested
+action that cannot complete produces `FAILED`. All actions completing produces
+`EXECUTED`, not `PASSED`. Browser resources are closed on every path.
+
+The Todo fixture under `examples/todo_app/` is deliberately independent of the
+ProofDemo frontend. It is a deterministic execution target, not product UI.
+
 ## DemoRun Lifecycle
 
-Stage 0.1 defines this legal state graph:
+Stage 1 consumes this legal state graph:
 
 ```text
 CREATED -> VALIDATED -> RUNNING -> EXECUTED
@@ -125,13 +146,14 @@ history entry. All timestamps are timezone-aware and normalized to UTC.
 Configuration comes from `.env` and `PROOFDEMO_` environment variables, with
 real environment variables taking precedence. It contains no secret defaults.
 The documented frontend and API defaults both use `127.0.0.1`. The API exposes
-only non-sensitive service metadata. Browser credentials, artifact redaction,
-and destructive-action safeguards belong to the browser stages and must be
-designed before those features ship.
+only non-sensitive service metadata. Browser navigation is constrained to the
+validated source origin, screenshots cannot escape their artifact directory,
+and literal fills are restricted by contract to non-sensitive demo data. Stage
+1 does not support credential injection.
 
 ## Deliberate Deferrals
 
-There is no browser runtime, executor, planner, model call, database, queue,
-recorder, narrator, TTS provider, or video renderer through Stage 0.1. Those
-are introduced only when their roadmap stage supplies executable acceptance
-criteria.
+There is no assertion executor, verification evidence, automatic trace,
+recorder, planner, model call, database, queue, narrator, TTS provider, or video
+renderer through Stage 1. Those are introduced only when their roadmap stage
+supplies executable acceptance criteria.

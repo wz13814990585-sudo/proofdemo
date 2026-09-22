@@ -1,39 +1,63 @@
-# Current Stage — Stage 0.1: Execution Contract Hardening
+# Current Stage — Stage 1: Deterministic Browser Execution
 
 ## Goal
 
-Stabilize ProofDemo's domain and local-development contracts before any browser
-runtime consumes them. This stage corrects verification semantics, identity,
-target typing, time handling, configuration, and roadmap boundaries discovered
-during the Stage 0 architecture review.
-
-Stage 0.1 must not install Playwright or implement browser execution.
+Execute a manually authored DemoSpec `1.1` against a deterministic local web
+application through a small Playwright adapter. Produce a lightweight execution
+report and explicitly requested screenshots without making any verification
+claim.
 
 ## Required Outcomes
 
-1. `EXECUTED` means browser actions completed without claiming verification.
-2. `PASSED` remains reserved for a future verifier and has no legal incoming
-   transition in the current implementation.
-3. DemoSpec schema version `1.1` provides stable Scene, Action, and Assertion
-   identities, and validates their uniqueness.
-4. Element targets use strategy-specific typed models rather than overloaded
-   `value` and `name` fields.
-5. Fixed-duration pacing is explicitly represented as `pause`; it is not a
-   page-readiness mechanism.
-6. `source_url` defines the allowed Stage 1 origin, the first action is an
-   explicit navigation, and every navigation remains on that origin.
-7. DemoRun timestamps are timezone-aware, normalized to UTC, and invalid time
-   input raises an explicit domain error.
-8. `.env` configuration is actually loaded, and documented frontend/backend
-   defaults use the same origin spelling.
-9. Stage 1 requested screenshots and lightweight execution results are clearly
-   separated from Stage 3 automatic capture and full trace persistence.
-10. Documentation, examples, generated schema, and tests agree with the
-    hardened contracts.
+1. An application-level `ExecutionService` depends on a narrow `BrowserPort`,
+   not directly on Playwright.
+2. A Playwright adapter implements same-origin `goto`, typed-target `click` and
+   `fill`, bounded `pause`, and requested `screenshot` actions.
+3. Actions execute in DemoSpec order and produce ordered action results keyed
+   by `scene_id/action_id`.
+4. Successful action completion transitions DemoRun to `EXECUTED`, never
+   `PASSED`.
+5. Action failures produce `FAILED`; unavailable browser infrastructure
+   produces `BLOCKED`. Both include explicit reasons.
+6. An `ExecutionReport` records run state, ordered action results, requested
+   screenshot paths, and `verification_status: NOT_RUN`.
+7. A `proofdemo run` CLI validates the spec, creates an artifact directory,
+   executes it, writes `execution_report.json`, and returns a meaningful exit
+   code.
+8. A separate deterministic Todo fixture application supports the example and
+   integration tests.
+9. Unit tests use a fake BrowserPort; integration tests exercise the real
+   Playwright adapter and Chromium.
+10. Existing Stage 0.1 contracts and tests continue to pass.
 
 ## Acceptance Criteria
 
-The following checks must succeed:
+Given the local Todo fixture and `examples/demo_spec.json`, running:
+
+```text
+proofdemo run examples/demo_spec.json --artifacts artifacts/todo-demo
+```
+
+must produce:
+
+- process exit code `0`;
+- `artifacts/todo-demo/execution_report.json`;
+- `artifacts/todo-demo/task-created.png`;
+- report status `EXECUTED`;
+- verification status `NOT_RUN`;
+- ordered successful results for `goto`, `fill`, `click`, and `screenshot`;
+- no assertion results and no `PASSED` state.
+
+Automated tests must also prove that:
+
+- all typed locator strategies map through the BrowserPort contract;
+- a missing target becomes `FAILED` with a non-empty reason;
+- browser startup failure becomes `BLOCKED` with a non-empty reason;
+- browser resources close after success and failure;
+- path traversal cannot escape the requested artifact directory;
+- the existing DemoSpec, DemoRun, configuration, API, and schema tests pass.
+
+The full validation suite is:
 
 ```text
 python -m pytest
@@ -43,51 +67,15 @@ mypy backend/src
 npm --prefix frontend run build
 ```
 
-The test suite must also demonstrate that:
-
-- a run can reach `EXECUTED`, `FAILED`, and `BLOCKED` as appropriate;
-- no current transition can produce `PASSED`;
-- naive timestamps are rejected with a domain error;
-- duplicate Scene, Action, and Assertion IDs are rejected;
-- invalid target field combinations are rejected;
-- cross-origin navigation and a missing initial navigation are rejected;
-- the checked-in DemoSpec example validates as schema version `1.1`;
-- the shared JSON Schema is in sync;
-- `.env` values load and real environment variables take precedence;
-- the documented frontend origin passes the API's CORS preflight;
-- the Git worktree contains no Playwright dependency or browser executor.
-
 ## Not Included
 
-- Playwright or any other browser engine;
-- browser execution services or adapters;
-- assertion execution or verification evidence generation;
-- trace capture, automatic screenshots, recording, or artifact manifests;
-- LLM planning, narration, TTS, or rendering;
-- databases, workers, queues, or deployment infrastructure.
+- assertion execution, assertion results, verification evidence, or `PASSED`;
+- autonomous exploration, locator repair, retries, or model calls;
+- full execution trace, automatic evidence screenshots, browser video, or
+  artifact manifest;
+- narration, TTS, video composition, persistence, queues, or workers;
+- production authentication or credential injection.
 
 ## Completion Status
 
-`COMPLETE` — verified 2026-09-22.
-
-Validation performed:
-
-- `.venv/bin/python -m pytest` — 32 tests passed;
-- `.venv/bin/ruff format --check .` — 18 files already formatted;
-- `.venv/bin/ruff check .` — passed;
-- `.venv/bin/python -m mypy backend/src` — passed with no issues in 7 source
-  files;
-- `npm --prefix frontend run build` — TypeScript and Vite production build
-  passed;
-- generated DemoSpec schema `1.1` matches the authoritative model;
-- live Uvicorn smoke test on `127.0.0.1:18080` returned the expected health
-  response;
-- live CORS preflight from `http://127.0.0.1:15173` returned HTTP 200 with the
-  matching `access-control-allow-origin` header;
-- live Vite smoke test on `127.0.0.1:15173` returned the application HTML;
-- a source/dependency scan confirmed no Playwright or browser-executor
-  implementation was introduced;
-- `git diff --check` passed.
-
-Alternate ports 18080 and 15173 were used only for smoke testing. Both
-temporary servers were stopped after verification.
+`COMPLETE`
