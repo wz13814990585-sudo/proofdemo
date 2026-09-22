@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from copy import deepcopy
 from dataclasses import replace
@@ -11,6 +12,13 @@ from typing import Any
 import pytest
 
 from proofdemo.application.artifacts import ArtifactKind, ArtifactWriteError, ArtifactWriter
+from proofdemo.application.change_detection import (
+    BaselineInvalidError,
+    ChangeCategory,
+    ChangeDetectionContext,
+    ChangeDetectionService,
+    ChangeStatus,
+)
 from proofdemo.application.execution import (
     ActionResultStatus,
     ArtifactPathError,
@@ -558,6 +566,7 @@ def test_artifact_writer_hashes_and_verifies_every_declared_file(tmp_path: Path)
         ArtifactKind.NARRATED_VIDEO,
         ArtifactKind.DEMO_RECIPE,
         ArtifactKind.REPLAY_PREFLIGHT,
+        ArtifactKind.UI_CHANGE_REPORT,
     }
     assert len(manifest.artifacts) == 10
     assert all(len(record.sha256) == 64 for record in manifest.artifacts)
@@ -921,6 +930,7 @@ def test_cli_replay_delegates_to_pipeline_and_emits_fresh_provenance(
     replay_manifest = json.loads(
         (replay_dir / "artifact_manifest.json").read_text(encoding="utf-8")
     )
+    change_report = json.loads((replay_dir / "ui_change_report.json").read_text(encoding="utf-8"))
 
     assert first_exit == EXIT_EXECUTED
     assert replay_exit == EXIT_EXECUTED
@@ -929,9 +939,234 @@ def test_cli_replay_delegates_to_pipeline_and_emits_fresh_provenance(
     assert replay_report["run"]["status"] == "PASSED"
     assert replay_report["run"]["id"] != str(source_recipe.provenance.source_run_id)
     assert str(replay_recipe.provenance.source_run_id) == replay_report["run"]["id"]
+    assert change_report["status"] == "UNCHANGED"
+    assert change_report["findings"] == []
     assert {record["kind"] for record in replay_manifest["artifacts"]}.issuperset(
-        {"REPLAY_PREFLIGHT", "DEMO_RECIPE", "FINAL_VIDEO"}
+        {"REPLAY_PREFLIGHT", "UI_CHANGE_REPORT", "DEMO_RECIPE", "FINAL_VIDEO"}
     )
+
+
+def test_change_detection_reports_changed_passing_observation(tmp_path: Path) -> None:
+    spec = DemoSpec.model_validate(load_example())
+    baseline = ExecutionService(FakeBrowser()).execute_bundle(spec, tmp_path / "baseline").report
+    replay = (
+        ExecutionService(FakeBrowser(text="Prepare launch demo with extra content"))
+        .execute_bundle(spec, tmp_path / "replay")
+        .report
+    )
+    context = ChangeDetectionContext(
+        recipe_id="recipe-id",
+        spec_id=spec.id,
+        source_run_id=str(baseline.run.id),
+        baseline=baseline,
+    )
+
+    report = ChangeDetectionService.compare(context, replay)
+
+    assert report.status is ChangeStatus.CHANGED
+    assert report.summary.finding_count == 1
+    assert report.findings[0].category is ChangeCategory.OBSERVATION_CHANGED
+    assert report.findings[0].assertion_id == "task-is-listed"
+
+
+def test_change_detection_reports_missing_stable_action(tmp_path: Path) -> None:
+    spec = DemoSpec.model_validate(load_example())
+    baseline = ExecutionService(FakeBrowser()).execute_bundle(spec, tmp_path / "baseline").report
+    replay = baseline.model_copy(update={"action_results": baseline.action_results[1:]})
+    context = ChangeDetectionContext(
+        recipe_id="recipe-id",
+        spec_id=spec.id,
+        source_run_id=str(baseline.run.id),
+        baseline=baseline,
+    )
+
+    report = ChangeDetectionService.compare(context, replay)
+
+    assert report.findings[0].category is ChangeCategory.ACTION_BROKEN
+    assert report.findings[0].action_id == "open-todo-app"
+    assert report.findings[0].replay_status == "MISSING"
+
+
+def test_cli_replay_persists_failed_assertion_change_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec_path = tmp_path / "spec.json"
+    spec_path.write_text(json.dumps(load_example()), encoding="utf-8")
+    source_dir = tmp_path / "source"
+    replay_dir = tmp_path / "replay"
+    monkeypatch.setattr("proofdemo.cli.PlaywrightBrowser", FakeBrowser)
+    monkeypatch.setattr("proofdemo.cli.FFmpegRenderAdapter", FakeRenderer)
+    assert run(["run", str(spec_path), "--artifacts", str(source_dir)]) == EXIT_EXECUTED
+    monkeypatch.setattr(
+        "proofdemo.cli.PlaywrightBrowser",
+        lambda: FakeBrowser(text="changed application text"),
+    )
+
+    replay_exit = run(
+        [
+            "replay",
+            str(source_dir / "demo_recipe.json"),
+            "--artifacts",
+            str(replay_dir),
+        ]
+    )
+    change_report = json.loads((replay_dir / "ui_change_report.json").read_text(encoding="utf-8"))
+    manifest = json.loads((replay_dir / "artifact_manifest.json").read_text(encoding="utf-8"))
+
+    assert replay_exit == EXIT_FAILED
+    assert change_report["status"] == "CHANGED"
+    text_finding = next(
+        finding
+        for finding in change_report["findings"]
+        if finding["assertion_id"] == "task-is-listed"
+    )
+    assert text_finding["category"] == "ASSERTION_BROKEN"
+    assert text_finding["baseline_observed"] == "Prepare launch demo"
+    assert text_finding["replay_observed"] == "changed application text"
+    assert "UI_CHANGE_REPORT" in {record["kind"] for record in manifest["artifacts"]}
+
+
+def test_cli_replay_classifies_broken_action_target(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec_path = tmp_path / "spec.json"
+    spec_path.write_text(json.dumps(load_example()), encoding="utf-8")
+    source_dir = tmp_path / "source"
+    replay_dir = tmp_path / "replay"
+    monkeypatch.setattr("proofdemo.cli.PlaywrightBrowser", FakeBrowser)
+    monkeypatch.setattr("proofdemo.cli.FFmpegRenderAdapter", FakeRenderer)
+    assert run(["run", str(spec_path), "--artifacts", str(source_dir)]) == EXIT_EXECUTED
+    monkeypatch.setattr(
+        "proofdemo.cli.PlaywrightBrowser",
+        lambda: FakeBrowser(action_error=BrowserActionError("target not actionable")),
+    )
+
+    replay_exit = run(
+        [
+            "replay",
+            str(source_dir / "demo_recipe.json"),
+            "--artifacts",
+            str(replay_dir),
+        ]
+    )
+    change_report = json.loads((replay_dir / "ui_change_report.json").read_text(encoding="utf-8"))
+
+    assert replay_exit == EXIT_FAILED
+    selector = next(
+        finding for finding in change_report["findings"] if finding["action_id"] == "add-task"
+    )
+    assert selector["category"] == "SELECTOR_BROKEN"
+
+
+def test_cli_replay_rejects_tampered_baseline_before_browser(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec_path = tmp_path / "spec.json"
+    spec_path.write_text(json.dumps(load_example()), encoding="utf-8")
+    source_dir = tmp_path / "source"
+    replay_dir = tmp_path / "replay"
+    monkeypatch.setattr("proofdemo.cli.PlaywrightBrowser", FakeBrowser)
+    monkeypatch.setattr("proofdemo.cli.FFmpegRenderAdapter", FakeRenderer)
+    assert run(["run", str(spec_path), "--artifacts", str(source_dir)]) == EXIT_EXECUTED
+    (source_dir / "execution_report.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        "proofdemo.cli.PlaywrightBrowser",
+        lambda: (_ for _ in ()).throw(AssertionError("browser must not start")),
+    )
+
+    replay_exit = run(
+        [
+            "replay",
+            str(source_dir / "demo_recipe.json"),
+            "--artifacts",
+            str(replay_dir),
+        ]
+    )
+
+    assert replay_exit == 64
+    assert not (replay_dir / "execution_report.json").exists()
+
+
+def test_baseline_identity_mismatch_is_rejected_even_with_matching_hash(
+    tmp_path: Path,
+) -> None:
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    spec = DemoSpec.model_validate(load_example())
+    bundle, manifest, _ = stage4_fixture(source_dir)
+    recipe = RecipeService().create(spec, bundle, manifest, source_dir).recipe
+    mismatched_run = bundle.report.run.model_copy(update={"spec_id": "different_spec"})
+    mismatched_report = bundle.report.model_copy(update={"run": mismatched_run})
+    report_path = source_dir / "execution_report.json"
+    report_path.write_text(mismatched_report.model_dump_json(), encoding="utf-8")
+    report_hash = hashlib.sha256(report_path.read_bytes()).hexdigest()
+    changed_report_provenance = recipe.provenance.execution_report.model_copy(
+        update={"sha256": report_hash}
+    )
+    changed_provenance = recipe.provenance.model_copy(
+        update={"execution_report": changed_report_provenance}
+    )
+    matching_hash_recipe = recipe.model_copy(update={"provenance": changed_provenance})
+
+    with pytest.raises(BaselineInvalidError, match="identity or status"):
+        ChangeDetectionService.load_baseline(matching_hash_recipe, source_dir)
+
+
+def test_cli_replay_without_implicit_baseline_reports_not_evaluated(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec_path = tmp_path / "spec.json"
+    spec_path.write_text(json.dumps(load_example()), encoding="utf-8")
+    source_dir = tmp_path / "source"
+    detached_dir = tmp_path / "detached"
+    replay_dir = tmp_path / "replay"
+    detached_dir.mkdir()
+    monkeypatch.setattr("proofdemo.cli.PlaywrightBrowser", FakeBrowser)
+    monkeypatch.setattr("proofdemo.cli.FFmpegRenderAdapter", FakeRenderer)
+    assert run(["run", str(spec_path), "--artifacts", str(source_dir)]) == EXIT_EXECUTED
+    detached_recipe = detached_dir / "recipe.json"
+    detached_recipe.write_bytes((source_dir / "demo_recipe.json").read_bytes())
+
+    replay_exit = run(["replay", str(detached_recipe), "--artifacts", str(replay_dir)])
+    change_report = json.loads((replay_dir / "ui_change_report.json").read_text(encoding="utf-8"))
+
+    assert replay_exit == EXIT_EXECUTED
+    assert change_report["status"] == "NOT_EVALUATED"
+    assert "not available" in change_report["unavailable_reason"]
+
+
+def test_explicit_missing_baseline_never_starts_browser(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    spec = DemoSpec.model_validate(load_example())
+    bundle, manifest, _ = stage4_fixture(source_dir)
+    recipe = RecipeService().create(spec, bundle, manifest, source_dir).recipe
+    recipe_path = source_dir / "recipe.json"
+    recipe_path.write_text(recipe.model_dump_json(), encoding="utf-8")
+    monkeypatch.setattr(
+        "proofdemo.cli.PlaywrightBrowser",
+        lambda: (_ for _ in ()).throw(AssertionError("browser must not start")),
+    )
+
+    replay_exit = run(
+        [
+            "replay",
+            str(recipe_path),
+            "--artifacts",
+            str(tmp_path / "replay"),
+            "--baseline-artifacts",
+            str(tmp_path / "missing-baseline"),
+        ]
+    )
+
+    assert replay_exit == 64
 
 
 def test_safe_artifact_path_rejects_traversal(tmp_path: Path) -> None:

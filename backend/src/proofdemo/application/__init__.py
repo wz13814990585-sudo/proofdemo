@@ -1,6 +1,11 @@
 """Application services that orchestrate ProofDemo domain behavior."""
 
 from proofdemo.application.artifacts import ArtifactManifest, ArtifactWriter
+from proofdemo.application.change_detection import (
+    ChangeDetectionService,
+    UIChangeFinding,
+    UIChangeReport,
+)
 from proofdemo.application.execution import (
     EvidenceCapture,
     ExecutionBundle,
@@ -36,6 +41,7 @@ __all__ = [
     "ArtifactWriter",
     "AssertionEvidence",
     "AssertionResult",
+    "ChangeDetectionService",
     "CompositionResult",
     "CompositionService",
     "EvidenceCapture",
@@ -55,6 +61,8 @@ __all__ = [
     "TimelineScene",
     "TraceEvent",
     "TraceEventKind",
+    "UIChangeFinding",
+    "UIChangeReport",
     "VerificationService",
     "VerificationStatus",
     "VideoTimeline",
