@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import threading
 from collections.abc import Iterator
@@ -12,8 +13,11 @@ from typing import Any
 
 import pytest
 
+from proofdemo.adapters.ffmpeg_render import FFmpegRenderAdapter
 from proofdemo.adapters.playwright_browser import PlaywrightBrowser
+from proofdemo.application.artifacts import ArtifactKind, ArtifactWriter
 from proofdemo.application.execution import ExecutionService
+from proofdemo.application.rendering import CompositionService
 from proofdemo.domain.demo_run import DemoRunStatus
 from proofdemo.domain.demo_spec import (
     CssTarget,
@@ -67,7 +71,8 @@ def spec_for_url(url: str) -> DemoSpec:
 def test_real_chromium_executes_example_and_captures_screenshot(
     todo_url: str, tmp_path: Path
 ) -> None:
-    report = ExecutionService(PlaywrightBrowser()).execute(spec_for_url(todo_url), tmp_path)
+    bundle = ExecutionService(PlaywrightBrowser()).execute_bundle(spec_for_url(todo_url), tmp_path)
+    report = bundle.report
 
     assert report.run.status is DemoRunStatus.PASSED
     assert report.verification_status == "PASSED"
@@ -91,6 +96,29 @@ def test_real_chromium_executes_example_and_captures_screenshot(
     assert report.browser_video_path == "browser.webm"
     assert (tmp_path / "browser.webm").stat().st_size > 0
     assert list(tmp_path.glob("*.webm")) == [tmp_path / "browser.webm"]
+
+    writer = ArtifactWriter()
+    source_manifest = writer.persist(bundle, tmp_path)
+    service = CompositionService(FFmpegRenderAdapter())
+    first = service.compose(bundle, source_manifest, tmp_path)
+    final_manifest = writer.persist(
+        bundle,
+        tmp_path,
+        extra_artifacts=first.declarations,
+    )
+    first_digest = hashlib.sha256((tmp_path / "demo.mp4").read_bytes()).hexdigest()
+    service.compose(bundle, final_manifest, tmp_path)
+    second_digest = hashlib.sha256((tmp_path / "demo.mp4").read_bytes()).hexdigest()
+
+    assert first.output_info.width == 1920
+    assert first.output_info.height == 1080
+    assert first.output_info.fps == pytest.approx(30.0)
+    assert first.output_info.codec == "h264"
+    assert first_digest == second_digest
+    assert ArtifactWriter.verify(tmp_path, final_manifest) == ()
+    assert {ArtifactKind.TIMELINE, ArtifactKind.FINAL_VIDEO}.issubset(
+        {record.kind for record in final_manifest.artifacts}
+    )
 
 
 def test_real_adapter_maps_every_typed_locator(todo_url: str) -> None:

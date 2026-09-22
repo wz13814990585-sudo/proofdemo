@@ -9,6 +9,13 @@ from proofdemo.ports.browser import (
     BrowserUnavailableError,
     DownloadObservation,
 )
+from proofdemo.ports.render import (
+    MediaInfo,
+    RenderFailedError,
+    RenderPort,
+    RenderSettings,
+    RenderUnavailableError,
+)
 
 __all__ = [
     "AppStateObservation",
@@ -18,4 +25,9 @@ __all__ = [
     "BrowserSessionArtifacts",
     "BrowserUnavailableError",
     "DownloadObservation",
+    "MediaInfo",
+    "RenderFailedError",
+    "RenderPort",
+    "RenderSettings",
+    "RenderUnavailableError",
 ]

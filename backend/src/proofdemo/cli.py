@@ -10,11 +10,14 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
+from proofdemo.adapters.ffmpeg_render import FFmpegRenderAdapter
 from proofdemo.adapters.playwright_browser import PlaywrightBrowser
 from proofdemo.application.artifacts import ArtifactWriteError, ArtifactWriter
 from proofdemo.application.execution import ExecutionService
+from proofdemo.application.rendering import CompositionRefusedError, CompositionService
 from proofdemo.domain.demo_run import DemoRunStatus
 from proofdemo.domain.demo_spec import DemoSpec
+from proofdemo.ports.render import RenderFailedError, RenderUnavailableError
 
 EXIT_EXECUTED = 0
 EXIT_FAILED = 1
@@ -50,11 +53,29 @@ def run(argv: Sequence[str] | None = None) -> int:
     try:
         args.artifacts.mkdir(parents=True, exist_ok=True)
         bundle = ExecutionService(PlaywrightBrowser()).execute_bundle(spec, args.artifacts)
-        ArtifactWriter().persist(bundle, args.artifacts)
+        writer = ArtifactWriter()
+        manifest = writer.persist(bundle, args.artifacts)
         report = bundle.report
+        if report.run.status is DemoRunStatus.PASSED:
+            composition = CompositionService(FFmpegRenderAdapter()).compose(
+                bundle,
+                manifest,
+                args.artifacts,
+            )
+            writer.persist(
+                bundle,
+                args.artifacts,
+                extra_artifacts=composition.declarations,
+            )
         report_path = args.artifacts / "execution_report.json"
     except (ArtifactWriteError, OSError) as error:
         print(f"Could not write artifacts: {error}", file=sys.stderr)
+        return EXIT_BLOCKED
+    except RenderUnavailableError as error:
+        print(f"Render blocked: {error}", file=sys.stderr)
+        return EXIT_BLOCKED
+    except (CompositionRefusedError, RenderFailedError) as error:
+        print(f"Render failed: {error}", file=sys.stderr)
         return EXIT_BLOCKED
 
     print(f"{report.run.status}: {report_path}")

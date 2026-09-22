@@ -37,12 +37,12 @@ screenshots, logs, artifact metadata, and browser video without changing
 verification semantics. Stage 1's explicitly requested screenshots remain
 simple execution artifacts rather than the automatic capture system.
 
-## Stage 4 — Deterministic Video Composition (next)
+## Stage 4 — Deterministic Video Composition (complete)
 
 Transform verified traces and recordings into a repeatable timeline and basic
 1080p video with deterministic composition.
 
-## Stage 5 — Demo Planner
+## Stage 5 — Demo Planner (next)
 
 Use a bounded model call to turn natural-language intent into a reviewable
 DemoSpec that the existing deterministic pipeline can validate and execute.

@@ -18,6 +18,7 @@ from proofdemo.application.execution import (
     ExecutionService,
     safe_artifact_path,
 )
+from proofdemo.application.rendering import CompositionRefusedError, CompositionService
 from proofdemo.application.trace import TraceEventKind
 from proofdemo.application.verification import OutcomeStatus, VerificationStatus
 from proofdemo.cli import EXIT_FAILED, run
@@ -31,6 +32,7 @@ from proofdemo.ports.browser import (
     BrowserUnavailableError,
     DownloadObservation,
 )
+from proofdemo.ports.render import MediaInfo, RenderSettings
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -130,6 +132,18 @@ class FakeBrowser:
             video_path=video_path,
             logs=(BrowserLogEntry(level="info", message="fixture ready"),),
         )
+
+
+class FakeRenderer:
+    def probe(self, path: Path) -> MediaInfo:
+        if path.suffix == ".mp4":
+            return MediaInfo(duration_ms=1_000, width=1920, height=1080, fps=30.0, codec="h264")
+        return MediaInfo(duration_ms=1_000, width=1280, height=720, fps=25.0, codec="vp8")
+
+    def render(self, source: Path, output: Path, settings: RenderSettings) -> None:
+        assert source.is_file()
+        assert settings == RenderSettings()
+        output.write_bytes(b"deterministic fake mp4")
 
 
 def test_successful_execution_is_ordered_and_verified(tmp_path: Path) -> None:
@@ -416,7 +430,10 @@ def test_artifact_writer_hashes_and_verifies_every_declared_file(tmp_path: Path)
     assert (tmp_path / "browser.log.jsonl").is_file()
     assert (tmp_path / "artifact_manifest.json").is_file()
     assert ArtifactWriter.verify(tmp_path, manifest) == ()
-    assert {record.kind for record in manifest.artifacts} == set(ArtifactKind)
+    assert {record.kind for record in manifest.artifacts} == set(ArtifactKind) - {
+        ArtifactKind.TIMELINE,
+        ArtifactKind.FINAL_VIDEO,
+    }
     assert len(manifest.artifacts) == 10
     assert all(len(record.sha256) == 64 for record in manifest.artifacts)
     evidence = [
@@ -457,6 +474,67 @@ def test_artifact_writer_rejects_correlated_path_traversal(tmp_path: Path) -> No
 
     with pytest.raises(ArtifactWriteError, match="escaped requested directory"):
         ArtifactWriter().persist(unsafe, tmp_path)
+
+
+def test_composition_builds_full_verified_timeline_and_final_manifest(tmp_path: Path) -> None:
+    bundle = ExecutionService(FakeBrowser()).execute_bundle(
+        DemoSpec.model_validate(load_example()),
+        tmp_path,
+    )
+    writer = ArtifactWriter()
+    source_manifest = writer.persist(bundle, tmp_path)
+
+    composition = CompositionService(FakeRenderer()).compose(
+        bundle,
+        source_manifest,
+        tmp_path,
+    )
+    final_manifest = writer.persist(
+        bundle,
+        tmp_path,
+        extra_artifacts=composition.declarations,
+    )
+
+    assert composition.timeline.source_duration_ms == 1_000
+    assert composition.timeline.scenes[0].start_ms == 0
+    assert composition.timeline.scenes[-1].end_ms == 1_000
+    assert composition.output_info == MediaInfo(
+        duration_ms=1_000,
+        width=1920,
+        height=1080,
+        fps=30.0,
+        codec="h264",
+    )
+    assert {ArtifactKind.TIMELINE, ArtifactKind.FINAL_VIDEO}.issubset(
+        {record.kind for record in final_manifest.artifacts}
+    )
+    assert ArtifactWriter.verify(tmp_path, final_manifest) == ()
+
+
+def test_composition_refuses_unverified_run(tmp_path: Path) -> None:
+    bundle = ExecutionService(FakeBrowser(text="wrong task")).execute_bundle(
+        DemoSpec.model_validate(load_example()),
+        tmp_path,
+    )
+    manifest = ArtifactWriter().persist(bundle, tmp_path)
+
+    with pytest.raises(CompositionRefusedError, match="verified PASSED"):
+        CompositionService(FakeRenderer()).compose(bundle, manifest, tmp_path)
+
+    assert not (tmp_path / "timeline.json").exists()
+    assert not (tmp_path / "demo.mp4").exists()
+
+
+def test_composition_refuses_tampered_source_artifact(tmp_path: Path) -> None:
+    bundle = ExecutionService(FakeBrowser()).execute_bundle(
+        DemoSpec.model_validate(load_example()),
+        tmp_path,
+    )
+    manifest = ArtifactWriter().persist(bundle, tmp_path)
+    (tmp_path / "browser.webm").write_bytes(b"tampered")
+
+    with pytest.raises(CompositionRefusedError, match="integrity check failed"):
+        CompositionService(FakeRenderer()).compose(bundle, manifest, tmp_path)
 
 
 def test_safe_artifact_path_rejects_traversal(tmp_path: Path) -> None:

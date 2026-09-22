@@ -1,63 +1,49 @@
-# Current Stage — Stage 3: Trace, Evidence Artifacts, and Browser Recording
+# Current Stage — Stage 4: Deterministic Video Composition
 
 ## Goal
 
-Persist what the deterministic executor and verifier actually did and observed.
-Produce a correlated immutable trace, automatic evidence screenshots, sanitized
-browser logs, browser video, and a hashed artifact manifest without changing
-Stage 2 verification semantics.
+Transform an integrity-checked, verified browser recording into a repeatable
+timeline and a basic 1920×1080 MP4. Keep timeline semantics under project
+control and delegate commodity media probing/encoding to an FFmpeg adapter.
 
 ## Required Outcomes
 
-1. A versioned `TraceEvent` model records a monotonic sequence, UTC timestamp,
-   event kind, stable scene/action/assertion correlation IDs, outcome, and
-   JSON-compatible non-sensitive data.
-2. The trace covers run transitions, action start/outcome, assertion outcome,
-   scene outcome, artifact capture outcome, and browser-session closure.
-3. Assertions with an available observation automatically receive a correlated
-   evidence screenshot after scene verification. Stage 1 explicitly requested
-   screenshots remain distinct execution artifacts.
-4. The Playwright adapter records the browser session to WebM and returns the
-   finalized recording path only after the browser context closes.
-5. Browser console and page-error entries are captured in order, bounded, and
-   sanitized before persistence.
-6. A focused artifact writer atomically persists `execution_report.json`,
-   `trace.jsonl`, `browser.log.jsonl`, and `artifact_manifest.json`.
-7. The manifest records every other persisted artifact's relative path, kind,
-   byte count, SHA-256 digest, and optional scene/assertion correlation. It
-   cannot self-hash or reference paths outside the requested artifact directory.
-8. `ExecutionReport` advances to version `3.0` and references trace, log,
-   manifest, evidence screenshot, requested screenshot, and video paths.
-9. Artifact capture failure is reported as an explicit warning and trace event;
-   it cannot fabricate or reverse assertion evidence or a verification result.
-10. Existing execution, verification, configuration, API, schema, lint, type,
-    and frontend checks continue to pass.
+1. Composition accepts only a Stage 3 report whose run and verification status
+   are both `PASSED` and whose artifact manifest passes integrity checks.
+2. A versioned timeline maps every verified scene to deterministic millisecond
+   boundaries derived from correlated trace events and source-video duration.
+3. Timeline validation requires ordered, non-overlapping, positive scene ranges
+   that cover the complete source recording.
+4. An application-owned `RenderPort` separates timeline policy from FFmpeg
+   process invocation and media probing.
+5. The FFmpeg adapter produces 1920×1080, 30 fps, H.264/yuv420p MP4 with a
+   fixed letterbox policy, no audio, stripped input metadata, and bounded
+   execution errors.
+6. Rendering the same verified source and timeline twice produces identical
+   output bytes in the supported local environment.
+7. `timeline.json` and `demo.mp4` are added to the Stage 3 artifact manifest
+   with byte counts and SHA-256 digests.
+8. `proofdemo run` composes automatically only after a verified `PASSED` run.
+   Failed, blocked, or tampered runs never produce success video.
+9. Missing FFmpeg is reported as a blocked render precondition without changing
+   the underlying execution or verification evidence.
+10. Existing execution, verification, capture, schema, lint, type, and frontend
+    checks continue to pass.
 
 ## Acceptance Criteria
 
-For the local Todo fixture, `proofdemo run` must still exit `0` and finish as
-`PASSED`, while additionally producing:
+For the local Todo fixture, `proofdemo run` must exit `0` and additionally
+produce:
 
-- `execution_report.json`;
-- `trace.jsonl` with contiguous sequence numbers and correlated action,
-  assertion, scene, and run events;
-- `browser.log.jsonl`;
-- one requested screenshot and five correlated evidence screenshots;
-- `browser.webm` with non-zero size;
-- `artifact_manifest.json` whose sizes and SHA-256 digests match every listed
-  file.
+- `timeline.json` with the verified `create_task` scene covering the source;
+- `demo.mp4` with H.264 video at exactly 1920×1080 and 30 fps;
+- a non-zero duration matching the browser recording within one output frame;
+- final manifest records and valid hashes for the timeline and MP4;
+- no video output when the example assertion is deliberately made false.
 
-Automated tests must additionally prove that:
-
-- fill values are absent from action trace payloads and browser logs are
-  sanitized (the same non-sensitive text may legitimately appear as assertion
-  evidence);
-- evidence screenshot names cannot escape the artifact directory;
-- trace order remains valid on `PASSED`, `FAILED`, and `BLOCKED` paths;
-- a missing optional capture produces a warning without changing deterministic
-  assertion results;
-- manifest verification detects changed artifact bytes;
-- browser resources and video finalize on success and failure.
+Automated tests must prove timeline invariants, refusal of unverified/tampered
+inputs, deterministic repeated rendering, FFmpeg-unavailable behavior, and
+real media properties through FFprobe.
 
 The full validation suite remains:
 
@@ -71,12 +57,12 @@ npm --prefix frontend run build
 
 ## Not Included
 
-- timeline editing, deterministic video composition, MP4 output, transitions,
-  captions, or overlays;
+- scene transitions, zooms, cursor effects, overlays, captions, music, or
+  editorial trimming;
+- narration, TTS, audio mixing, or lip/timing alignment;
 - model planning, autonomous exploration, locator repair, or retries;
-- credentials, cross-origin workflows, destructive actions, or production
-  authentication;
-- narration, TTS, DemoRecipe persistence, queues, workers, or cloud storage.
+- DemoRecipe persistence, partial rerendering, queues, workers, or cloud
+  rendering.
 
 ## Completion Status
 
