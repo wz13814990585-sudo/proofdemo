@@ -68,6 +68,9 @@ def test_workbench_submits_intent_and_renders_verified_result(vite_url: str) -> 
         "run_status": "PASSED",
         "safety_findings": [],
         "preview_revision": 0,
+        "exploration_status": "COMPLETE",
+        "exploration_page_count": 1,
+        "grounding_status": "GROUNDED",
     }
     spec = {
         "id": "ui_demo",
@@ -125,6 +128,49 @@ def test_workbench_submits_intent_and_renders_verified_result(vite_url: str) -> 
             body = job
         elif path == f"/jobs/{job_id}/spec":
             body = spec
+        elif path == f"/jobs/{job_id}/exploration":
+            body = {
+                "status": "COMPLETE",
+                "warnings": [],
+                "unvisited_link_count": 0,
+                "pages": [
+                    {
+                        "url": "https://product.example.test/",
+                        "title": "Product home",
+                        "headings": ["Get started"],
+                        "controls": [
+                            {
+                                "id": "page-1-control-1",
+                                "kind": "button",
+                                "name": "Create task",
+                                "href": None,
+                                "target": {
+                                    "strategy": "role",
+                                    "role": "button",
+                                    "name": "Create task",
+                                },
+                            }
+                        ],
+                    }
+                ],
+            }
+        elif path == f"/jobs/{job_id}/grounding":
+            body = {
+                "status": "GROUNDED",
+                "checks": [
+                    {
+                        "scene_id": "create_task",
+                        "action_id": "open",
+                        "status": "GROUNDED",
+                        "page_index": 1,
+                        "control_id": None,
+                        "reason": None,
+                    }
+                ],
+            }
+        elif path.startswith(f"/jobs/{job_id}/exploration-preview"):
+            route.fulfill(status=200, headers={**cors, "Content-Type": "image/png"}, body=b"")
+            return
         elif path == f"/jobs/{job_id}/report":
             body = report
         elif path == f"/jobs/{job_id}/manifest":
@@ -162,6 +208,9 @@ def test_workbench_submits_intent_and_renders_verified_result(vite_url: str) -> 
         page.locator("#duration").select_option("90")
         page.locator("button.primary-button").click()
         page.locator("video").wait_for(timeout=10_000)
+        page.get_by_role("tab", name="探索").click()
+        page.get_by_text("Product home").wait_for(timeout=10_000)
+        assert page.get_by_text("计划证据覆盖").count() == 1
         page.get_by_role("tab", name="验证").click()
         page.get_by_text("visible", exact=True).wait_for(timeout=10_000)
 

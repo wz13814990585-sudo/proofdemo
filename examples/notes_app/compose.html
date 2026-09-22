@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="UTF-8"><title>Compose note</title></head>
+  <body>
+    <main>
+      <h1>Write a note</h1>
+      <form id="note-form">
+        <label for="note-title">Note title</label>
+        <input id="note-title" name="title" autocomplete="off">
+        <button type="submit">Publish note</button>
+      </form>
+      <p data-testid="published-note" aria-live="polite"></p>
+    </main>
+    <script>
+      document.querySelector("#note-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const title = document.querySelector("#note-title").value.trim();
+        if (title) document.querySelector('[data-testid="published-note"]').textContent = title;
+      });
+    </script>
+  </body>
+</html>

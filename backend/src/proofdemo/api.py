@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict
 from proofdemo import __version__
 from proofdemo.application.artifacts import ArtifactManifest
 from proofdemo.application.execution import ExecutionReport
+from proofdemo.application.grounding import GroundingReport
 from proofdemo.application.jobs import (
     TERMINAL,
     JobBusyError,
@@ -25,6 +26,7 @@ from proofdemo.application.jobs import (
 )
 from proofdemo.config import Settings
 from proofdemo.domain.demo_spec import DemoSpec
+from proofdemo.domain.exploration import ExplorationReport
 from proofdemo.domain.planning import DemoIntent
 
 
@@ -122,6 +124,42 @@ def create_app(settings: Settings | None = None, jobs: JobManager | None = None)
             return job_manager.spec(job_id)
         except FileNotFoundError as error:
             raise HTTPException(status_code=404, detail="DemoSpec not available") from error
+        except JobIntegrityError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @application.get("/jobs/{job_id}/exploration", response_model=ExplorationReport)
+    def get_exploration(job_id: UUID) -> ExplorationReport:
+        require_job(job_id)
+        try:
+            return job_manager.exploration(job_id)
+        except FileNotFoundError as error:
+            raise HTTPException(
+                status_code=404, detail="Exploration report not available"
+            ) from error
+        except JobIntegrityError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @application.get("/jobs/{job_id}/grounding", response_model=GroundingReport)
+    def get_grounding(job_id: UUID) -> GroundingReport:
+        require_job(job_id)
+        try:
+            return job_manager.grounding(job_id)
+        except FileNotFoundError as error:
+            raise HTTPException(status_code=404, detail="Grounding report not available") from error
+        except JobIntegrityError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @application.get("/jobs/{job_id}/exploration-preview")
+    def get_exploration_preview(job_id: UUID) -> FileResponse:
+        require_job(job_id)
+        try:
+            return FileResponse(
+                job_manager.exploration_preview_path(job_id), media_type="image/png"
+            )
+        except FileNotFoundError as error:
+            raise HTTPException(
+                status_code=404, detail="Exploration preview not available"
+            ) from error
         except JobIntegrityError as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
 

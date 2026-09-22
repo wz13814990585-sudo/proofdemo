@@ -405,6 +405,10 @@ footer {
 .scene-card p, .verification-card p { color: #abb3a3; font-size: 12px; line-height: 1.55; }
 .scene-card span { color: #75806e; font-size: 11px; }
 .verification-list { display: grid; gap: 10px; padding-top: 18px; }
+.exploration-list { display: grid; gap: 10px; padding-top: 18px; }
+.exploration-list > p { color: #aeb7a5; font-size: 12px; }
+.exploration-list ul { margin: 8px 0 0; padding-left: 17px; color: #aeb7a5; font-size: 11px; line-height: 1.6; }
+.observed-url { overflow-wrap: anywhere; }
 .verification-list > p { color: #aeb7a5; font-size: 12px; }
 .verification-card h3 { display: flex; justify-content: space-between; }
 .verification-card h3 span { color: #b4ff53; }

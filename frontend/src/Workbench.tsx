@@ -1,11 +1,12 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 type Health = { version: string };
-type JobStatus = "QUEUED" | "PLANNING" | "AWAITING_APPROVAL" | "EXECUTING" | "RENDERING" | "PASSED" | "FAILED" | "BLOCKED";
+type JobStatus = "QUEUED" | "EXPLORING" | "PLANNING" | "AWAITING_APPROVAL" | "EXECUTING" | "RENDERING" | "PASSED" | "FAILED" | "BLOCKED";
 type Finding = { scene_id: string; action_id: string; description: string };
 type Job = {
   id: string; status: JobStatus; message: string; spec_id: string | null;
   run_status: string | null; safety_findings: Finding[]; preview_revision: number;
+  exploration_status: string | null; exploration_page_count: number; grounding_status: string | null;
 };
 type Event = {
   sequence: number; kind: string; status: string | null; message: string | null;
@@ -17,11 +18,14 @@ type AssertionResult = { assertion_id: string; status: string; reason?: string;
   evidence?: { kind: string; expected: unknown; observed: unknown } | null };
 type Report = { verification_status: string; scene_results: { scene_id: string; status: string; reason?: string; assertion_results: AssertionResult[] }[]; artifact_warnings: string[] };
 type Manifest = { artifacts: { kind: string; path: string }[] };
-type Tab = "scenes" | "verification" | "spec";
+type Exploration = { status: string; warnings: string[]; unvisited_link_count: number;
+  pages: { url: string; title: string; headings: string[]; controls: { id: string; kind: string; name: string; href: string | null; target: unknown }[] }[] };
+type Grounding = { status: string; checks: { scene_id: string; action_id: string; status: string; page_index: number | null; control_id: string | null; reason: string | null }[] };
+type Tab = "exploration" | "scenes" | "verification" | "spec";
 
 const api = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 const terminal = new Set<JobStatus>(["PASSED", "FAILED", "BLOCKED"]);
-const stages = ["规划", "执行与验证", "渲染", "交付"];
+const stages = ["探索", "规划", "执行与验证", "渲染", "交付"];
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${api}${path}`, init);
@@ -35,7 +39,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 function eventText(item: Event): string {
   if (item.message) return item.message;
   const label: Record<string, string> = {
-    ACTION_STARTED: "开始操作", ACTION_FINISHED: "操作完成", ASSERTION_EVALUATED: "断言已检查",
+    PAGE_OBSERVED: "已观察页面", ACTION_STARTED: "开始操作", ACTION_FINISHED: "操作完成", ASSERTION_EVALUATED: "断言已检查",
     SCENE_EVALUATED: "场景已验证", PREVIEW_UPDATED: "画面已更新", RUN_TRANSITION: "运行状态变化",
   };
   const subject = [item.scene_id, item.action_id ?? item.assertion_id].filter(Boolean).join(" / ");
@@ -55,12 +59,14 @@ export default function Workbench() {
   const [spec, setSpec] = useState<DemoSpec | null>(null);
   const [report, setReport] = useState<Report | null>(null);
   const [manifest, setManifest] = useState<Manifest | null>(null);
+  const [exploration, setExploration] = useState<Exploration | null>(null);
+  const [grounding, setGrounding] = useState<Grounding | null>(null);
   const [events, setEvents] = useState<Event[]>([]);
-  const [tab, setTab] = useState<Tab>("scenes");
+  const [tab, setTab] = useState<Tab>("exploration");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const refreshing = useRef(false);
-  const fetched = useRef({ spec: "", report: "", manifest: "" });
+  const fetched = useRef({ spec: "", report: "", manifest: "", exploration: "", grounding: "" });
 
   useEffect(() => {
     let mounted = true;
@@ -80,6 +86,14 @@ export default function Workbench() {
     try {
       const current = await request<Job>(`/jobs/${id}`);
       setJob(current);
+      if (current.exploration_status && fetched.current.exploration !== id) {
+        setExploration(await request<Exploration>(`/jobs/${id}/exploration`));
+        fetched.current.exploration = id;
+      }
+      if (current.grounding_status && fetched.current.grounding !== id) {
+        setGrounding(await request<Grounding>(`/jobs/${id}/grounding`));
+        fetched.current.grounding = id;
+      }
       if (current.spec_id && fetched.current.spec !== id) {
         setSpec(await request<DemoSpec>(`/jobs/${id}/spec`));
         fetched.current.spec = id;
@@ -115,7 +129,7 @@ export default function Workbench() {
       const item = JSON.parse(message.data) as Event;
       setEvents((previous) => previous.some((saved) => saved.sequence === item.sequence)
         ? previous : [...previous, item].slice(-100));
-      if (["JOB_STATUS", "PREVIEW_UPDATED", "SCENE_EVALUATED"].includes(item.kind)) {
+      if (["JOB_STATUS", "PAGE_OBSERVED", "PREVIEW_UPDATED", "SCENE_EVALUATED"].includes(item.kind)) {
         void refresh(jobId);
       }
     };
@@ -132,8 +146,8 @@ export default function Workbench() {
         body: JSON.stringify({ source_url: url, goal, audience: audience.trim() || null,
           language, approximate_duration_seconds: Number(duration) }),
       });
-      setSpec(null); setReport(null); setManifest(null); setEvents([]);
-      fetched.current = { spec: "", report: "", manifest: "" };
+      setSpec(null); setReport(null); setManifest(null); setExploration(null); setGrounding(null); setEvents([]);
+      fetched.current = { spec: "", report: "", manifest: "", exploration: "", grounding: "" };
       localStorage.setItem("proofdemo-job-id", created.id);
       setJob(created); setJobId(created.id);
     } catch (caught) {
@@ -152,8 +166,9 @@ export default function Workbench() {
   }
 
   const active = job && !terminal.has(job.status);
-  const phase = !job ? -1 : job.status === "PASSED" ? 3 : job.status === "RENDERING" ? 2
-    : job.status === "EXECUTING" ? 1 : job.status === "QUEUED" ? -1 : 0;
+  const phase = !job ? -1 : job.status === "PASSED" ? 4 : job.status === "RENDERING" ? 3
+    : job.status === "EXECUTING" ? 2 : job.status === "PLANNING" || job.status === "AWAITING_APPROVAL" ? 1
+      : job.status === "QUEUED" ? -1 : 0;
   const videoReady = job?.status === "PASSED" && report?.verification_status === "PASSED"
     && manifest?.artifacts.some((item) => item.kind === "FINAL_VIDEO");
 
@@ -167,7 +182,7 @@ export default function Workbench() {
       <div><p className="eyebrow">VERIFIED PRODUCT DEMOS</p>
         <h1>从一个想法，到有证据的演示。</h1>
         <p>输入产品地址和目标。ProofDemo 规划场景、操作浏览器、验证结果，并交付视频。</p></div>
-      <span className="mode-pill">LOCAL STUDIO · STAGE 11</span>
+      <span className="mode-pill">LOCAL STUDIO · STAGE 12</span>
     </header>
     <div className="workspace">
       <aside className="panel control-panel">
@@ -193,7 +208,7 @@ export default function Workbench() {
           <button className="primary-button" type="submit" disabled={sending || Boolean(active) || !online}>
             {sending ? "正在提交…" : active ? "演示进行中" : "生成演示 ↗"}</button>
         </form>
-        <p className="fine-print">仅用于你获授权访问的站点。模型规划需要配置后端模型。未验证的结果不会生成成功视频。</p>
+        <p className="fine-print">仅用于你获授权访问的站点。探索只读且限于同源页面，不会登录或提交表单；动态控件可能无法预先观察。模型需要后端配置，未验证的结果不会生成成功视频。</p>
       </aside>
       <div className="results-column">
         <section className="panel progress-panel">
@@ -212,13 +227,15 @@ export default function Workbench() {
           </div>}
         </section>
         <section className="panel live-panel">
-          <div className="panel-title"><span>03</span><h2>实时浏览器</h2><small>{job?.status === "EXECUTING" ? "LIVE" : "PREVIEW"}</small></div>
+          <div className="panel-title"><span>03</span><h2>实时浏览器</h2><small>{job?.status === "EXECUTING" ? "LIVE" : job?.status === "EXPLORING" ? "READ-ONLY" : "PREVIEW"}</small></div>
           <div className="live-layout"><div className="browser-frame">
-            <div className="browser-chrome"><i /><i /><i /><span>{spec?.source_url ?? "等待浏览器启动"}</span></div>
+            <div className="browser-chrome"><i /><i /><i /><span>{spec?.source_url ?? (url || "等待浏览器启动")}</span></div>
             {job && job.preview_revision > 0
               ? <img alt="浏览器执行实时预览" src={`${api}/jobs/${job.id}/preview?v=${job.preview_revision}`} />
+              : job && job.exploration_page_count > 0
+                ? <img alt="只读页面探索预览" src={`${api}/jobs/${job.id}/exploration-preview?v=${job.exploration_page_count}`} />
               : <div className="preview-placeholder"><span>◎</span><strong>浏览器画面将在这里出现</strong>
-                <small>每完成一个操作，都会更新一次预览</small></div>}
+                <small>每观察一个页面或完成一个操作，都会更新预览</small></div>}
           </div><div className="event-feed"><h3>执行事件</h3>
             {events.length ? [...events].reverse().slice(0, 12).map((item) => <div className="event-item" key={item.sequence}>
               <span>{String(item.sequence).padStart(2, "0")}</span><strong>{eventText(item)}</strong>
@@ -226,9 +243,25 @@ export default function Workbench() {
         </section>
         <section className="panel details-panel">
           <div className="panel-title"><span>04</span><h2>计划与证据</h2></div>
-          <div className="tabs" role="tablist" aria-label="演示详情">{(["scenes", "verification", "spec"] as Tab[])
+          <div className="tabs" role="tablist" aria-label="演示详情">{(["exploration", "scenes", "verification", "spec"] as Tab[])
             .map((item) => <button key={item} type="button" role="tab" aria-selected={tab === item}
-              onClick={() => setTab(item)}>{item === "scenes" ? "场景" : item === "verification" ? "验证" : "DemoSpec"}</button>)}</div>
+              onClick={() => setTab(item)}>{item === "exploration" ? "探索" : item === "scenes" ? "场景" : item === "verification" ? "验证" : "DemoSpec"}</button>)}</div>
+          {tab === "exploration" && <div className="exploration-list">{exploration ? <>
+            <p>只读探索：<strong>{exploration.status}</strong> · 已观察 {exploration.pages.length} 页 · 未访问安全链接 {exploration.unvisited_link_count} 个</p>
+            {exploration.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}
+            {exploration.pages.map((page, index) => <article className="scene-card" key={page.url}>
+              <small>OBSERVED PAGE {index + 1}</small><h3>{page.title || "未命名页面"}</h3>
+              <p className="observed-url">{page.url}</p><p>{page.headings.join(" · ")}</p>
+              <p>{page.controls.length} 个可见控件</p>
+              <ul>{page.controls.slice(0, 12).map((control) => <li key={control.id}>
+                {control.kind} · {control.name}{control.target ? " · 已定位" : " · 无唯一定位"}</li>)}</ul>
+            </article>)}
+            {grounding && <article className="verification-card"><h3>计划证据覆盖 <span>{grounding.status}</span></h3>
+              {grounding.checks.map((check) => <div key={`${check.scene_id}/${check.action_id}`}>
+                <span>{check.scene_id} / {check.action_id}</span><strong>{check.status}</strong>
+                <small>{check.control_id ? `控件 ${check.control_id}` : check.page_index ? `页面 ${check.page_index}` : check.reason ?? "展示动作"}</small>
+              </div>)}</article>}
+          </> : <p className="empty-copy">只读探索完成后，页面、控件和证据覆盖会显示在这里。</p>}</div>}
           {tab === "scenes" && <div className="scene-list">{spec?.scenes.map((scene, index) =>
             <article className="scene-card" key={scene.id}><small>SCENE {String(index + 1).padStart(2, "0")}</small>
               <h3>{scene.title}</h3><p>{scene.goal}</p><span>{scene.actions.length} 个操作 · {scene.assertions.length} 项断言</span>
