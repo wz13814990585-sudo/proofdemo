@@ -18,11 +18,11 @@ Application orchestration
 Domain  Adapters  Persistence
 ```
 
-Through Stage 6, the application layer contains a bounded planning service plus
+Through Stage 7, the application layer contains a bounded planning service plus
 focused deterministic execution, verification, tracing, artifact-persistence,
-composition, and narration services. Browser, media, and provider mechanics sit
-behind application-owned ports implemented by Playwright Chromium, FFmpeg, and
-optional OpenAI adapters.
+composition, narration, recipe, and replay-preflight services. Browser, media,
+and provider mechanics sit behind application-owned ports implemented by
+Playwright Chromium, FFmpeg, and optional OpenAI adapters.
 
 ## Technology Choices
 
@@ -84,6 +84,8 @@ rendering frameworks. Adapters implement application-defined boundaries.
 | Narration claim text | deterministic passed-assertion templates |
 | Speech synthesis | provider behind a narrow boundary |
 | Audio alignment | deterministic timeline policy and FFmpeg adapter |
+| Recipe compatibility | deterministic application policy |
+| Replay execution | existing execution/verification/media services |
 
 ## DemoSpec Execution Contract
 
@@ -212,8 +214,8 @@ MP4 are included in the integrity manifest.
 
 ## DemoRun Lifecycle
 
-Stage 6 preserves this legal state graph; planning, rendering, and narration
-cannot change it:
+Stage 7 preserves this legal state graph; planning, rendering, narration, and
+replay preflight cannot change it:
 
 ```text
 CREATED -> VALIDATED -> RUNNING -> EXECUTED -> PASSED
@@ -231,6 +233,25 @@ success result. Only evidence-backed verification enables `EXECUTED -> PASSED`.
 is pure: it constructs a fully revalidated model and appends an immutable
 history entry. All timestamps are timezone-aware and normalized to UTC.
 
+## Recipe and Replay Boundary
+
+`DemoRecipe` embeds the canonical DemoSpec and its semantic SHA-256 fingerprint,
+the fixed Chromium/headless/1280×720 execution profile, supported schema
+requirements, generator version, and source provenance. Provenance cites the
+verified execution report and preferred final video by manifest hash. It does
+not include browser storage, credentials, environment values, provider keys, or
+logs.
+
+`RecipeService` creates a recipe only from a verified `PASSED` bundle and an
+integrity-checked manifest with matching run/spec identities. Compatibility
+checks collect every unsupported recipe/schema/engine/profile constraint and
+fingerprint mismatch into `replay_preflight.json` before Playwright is created.
+
+A compatible replay passes the embedded DemoSpec to the same CLI orchestration,
+`ExecutionService`, verifier, artifact writer, and media services. The preflight
+report is recorded in the new run's manifest; the replay receives a fresh run ID
+and emits a new recipe. Speech remains a separate explicit opt-in.
+
 ## Configuration and Security
 
 Configuration comes from `.env` and `PROOFDEMO_` environment variables, with
@@ -243,13 +264,14 @@ application-state hook accepts a validated key as data rather than code.
 Diagnostic logs are bounded and sanitized, and fill values are not copied into
 action trace payloads. Provider credentials are read only from environment
 configuration and are never admitted to DemoIntent, DemoSpec, traces, or
-artifacts. Speech receives only fixed, non-sensitive phrases. Stage 6 does not
+artifacts. Speech receives only fixed, non-sensitive phrases. Recipes omit
+environment snapshots, browser session state, and credentials. Stage 7 does not
 support browser credential injection.
 
 ## Deliberate Deferrals
 
 There are no model tools, model-written narration, autonomous exploration,
 locator repair, editorial transitions, zooms, overlays, captions, music,
-database, queue, recipe, partial rerender, or cloud artifact store through
-Stage 6. Those are introduced only when their roadmap stage supplies executable
-acceptance criteria.
+database, queue, UI-change comparison, repair, partial rerender, or cloud
+artifact store through Stage 7. Those are introduced only when their roadmap
+stage supplies executable acceptance criteria.

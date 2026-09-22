@@ -15,9 +15,10 @@ import pytest
 
 from proofdemo.adapters.ffmpeg_render import FFmpegRenderAdapter
 from proofdemo.adapters.playwright_browser import PlaywrightBrowser
-from proofdemo.application.artifacts import ArtifactKind, ArtifactWriter
+from proofdemo.application.artifacts import ArtifactKind, ArtifactManifest, ArtifactWriter
 from proofdemo.application.execution import ExecutionService
 from proofdemo.application.rendering import CompositionService
+from proofdemo.cli import EXIT_EXECUTED, run
 from proofdemo.domain.demo_run import DemoRunStatus
 from proofdemo.domain.demo_spec import (
     CssTarget,
@@ -118,6 +119,44 @@ def test_real_chromium_executes_example_and_captures_screenshot(
     assert ArtifactWriter.verify(tmp_path, final_manifest) == ()
     assert {ArtifactKind.TIMELINE, ArtifactKind.FINAL_VIDEO}.issubset(
         {record.kind for record in final_manifest.artifacts}
+    )
+
+
+def test_real_cli_replays_recipe_with_fresh_verified_run(
+    todo_url: str,
+    tmp_path: Path,
+) -> None:
+    spec_path = tmp_path / "spec.json"
+    spec_path.write_text(spec_for_url(todo_url).model_dump_json(), encoding="utf-8")
+    source_dir = tmp_path / "source"
+    replay_dir = tmp_path / "replay"
+
+    first_exit = run(["run", str(spec_path), "--artifacts", str(source_dir)])
+    first_report = json.loads((source_dir / "execution_report.json").read_text(encoding="utf-8"))
+    replay_exit = run(
+        [
+            "replay",
+            str(source_dir / "demo_recipe.json"),
+            "--artifacts",
+            str(replay_dir),
+        ]
+    )
+    replay_report = json.loads((replay_dir / "execution_report.json").read_text(encoding="utf-8"))
+    preflight = json.loads((replay_dir / "replay_preflight.json").read_text(encoding="utf-8"))
+    replay_manifest = ArtifactManifest.model_validate_json(
+        (replay_dir / "artifact_manifest.json").read_text(encoding="utf-8")
+    )
+
+    assert first_exit == EXIT_EXECUTED
+    assert replay_exit == EXIT_EXECUTED
+    assert first_report["run"]["status"] == "PASSED"
+    assert replay_report["run"]["status"] == "PASSED"
+    assert replay_report["run"]["id"] != first_report["run"]["id"]
+    assert preflight["status"] == "COMPATIBLE"
+    assert preflight["source_run_id"] == first_report["run"]["id"]
+    assert ArtifactWriter.verify(replay_dir, replay_manifest) == ()
+    assert {ArtifactKind.REPLAY_PREFLIGHT, ArtifactKind.DEMO_RECIPE}.issubset(
+        {record.kind for record in replay_manifest.artifacts}
     )
 
 

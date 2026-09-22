@@ -14,6 +14,7 @@ from proofdemo.application.narration import (
     NarrationTrack,
 )
 from proofdemo.application.planning import PlanningResult, PlanningService
+from proofdemo.application.recipes import RecipeService, ReplayPreflight
 from proofdemo.application.rendering import (
     CompositionResult,
     CompositionService,
@@ -48,6 +49,8 @@ __all__ = [
     "OutcomeStatus",
     "PlanningResult",
     "PlanningService",
+    "RecipeService",
+    "ReplayPreflight",
     "SceneResult",
     "TimelineScene",
     "TraceEvent",
