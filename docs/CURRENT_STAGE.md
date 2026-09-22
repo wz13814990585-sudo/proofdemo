@@ -1,58 +1,66 @@
-# Current Stage — Stage 8: Deterministic UI Change Detection
+# Current Stage — Stage 9: Bounded Scene Repair and Partial Rerender
 
 ## Goal
 
-Compare a replay with its integrity-verified successful baseline and identify
-which stable actions, assertions, observations, or scene assumptions changed.
-Diagnosis must remain evidence-based and must not repair or reinterpret failure.
+Turn a verified UI-change diagnosis into a narrow, review-required target repair,
+prove the repaired DemoSpec in a fresh run, and reuse baseline footage for every
+scene that was not invalidated.
 
 ## Required Outcomes
 
-1. Baseline loading verifies the source `execution_report.json` SHA-256 against
-   the recipe provenance before Playwright starts.
-2. Baselines must be `PASSED`, match the recipe's source run/spec identities,
-   and contain only the existing strict ExecutionReport schema.
-3. Replay comparison uses stable scene/action/assertion IDs rather than array
-   positions, screenshots, visual similarity, or model judgment.
-4. A versioned `ui_change_report.json` distinguishes `UNCHANGED` and `CHANGED`
-   and records baseline/replay run IDs, counts, and structured findings.
-5. Findings classify broken selectors, failed actions, failed/missing
-   assertions, changed observations, and broken scene assumptions with their
-   stable correlation IDs and bounded evidence.
-6. Identical successful replay produces zero findings. A failed replay still
-   persists its change report and includes it in that run's artifact manifest.
-7. `proofdemo replay` automatically uses the recipe directory as the baseline
-   artifact directory; `--baseline-artifacts` may explicitly override it.
-8. A missing implicit baseline preserves portable replay but clearly reports
-   that comparison was unavailable. An explicit missing/tampered baseline is an
-   invalid input and never starts a browser.
-9. Change detection is read-only diagnosis. It does not alter DemoSpec,
-   locators, verification status, footage, recipes, or run lifecycle.
-10. Tests cover unchanged replay, changed observation, broken selector/action,
-    missing result, baseline hash/identity mismatch, unavailable portable
-    baseline, browser non-execution on invalid provenance, and manifest linkage.
-11. Existing planning, execution, verification, narration, recipes, lint, type,
-    and frontend checks continue to pass.
+1. A strict versioned repair proposal may replace only typed element targets on
+   existing `click`/`fill` actions or `element_visible`/`text_contains`
+   assertions in exactly one diagnosed scene.
+2. Repairs cannot add/remove/reorder scenes, actions, or assertions; change
+   IDs/types, URLs, fill values, timeouts, expected values, goals, or source
+   origin; or contain credentials/executable code.
+3. `RepairService` depends on a narrow `RepairPort`. The OpenAI adapter makes
+   one structured-output call with an explicit model, no tools, no persistence,
+   and no execution capability.
+4. Proposal input is an integrity-checked Stage 8 change report belonging to the
+   supplied recipe. Candidates are deterministically revalidated and rejected
+   for unrelated, duplicate, unchanged, or unsupported replacements.
+5. `proofdemo propose-repair` writes a candidate for human review and never
+   executes it. `proofdemo apply-repair` is the explicit approval boundary.
+6. Applying a proposal reconstructs and fully validates a repaired DemoSpec,
+   then delegates to the existing execution and verification pipeline.
+7. A failed or blocked repaired run produces no repaired-success video. Partial
+   composition starts only after every scene in the repaired run is `PASSED`.
+8. Baseline artifacts and repaired artifacts must both pass manifest integrity;
+   scene IDs must match; only the repaired scene may differ in contract.
+9. A project-owned partial-render plan chooses repaired footage only for the
+   invalidated scene and verified baseline footage for every other scene.
+10. An FFmpeg adapter concatenates the selected ranges into
+    `demo-repaired.mp4`; `partial_render.json` records source path/hash, source
+    time bounds, output bounds, and scene provenance.
+11. Repair proposal, partial-render plan, and repaired MP4 are included in the
+    new manifest. The new recipe cites the repaired MP4 as final provenance.
+12. Tests use fake repair providers/no billable calls and cover proposal scope,
+    tampering, explicit approval, failed repair refusal, baseline reuse,
+    invalidated-scene replacement, media properties, and artifact hashes.
+13. Existing planning, execution, verification, narration, replay/change
+    detection, lint, type, and frontend checks continue to pass.
 
 ## Acceptance Criteria
 
-Replaying an unchanged Todo fixture must produce `UNCHANGED` with no findings.
-Changing the fixture's observed text must retain the honest failed assertion/run
-and produce a correlated assertion/observation finding. Making an action target
-unavailable must produce a selector/action finding and blocked downstream
-assumptions without converting the replay to success.
+A two-scene fixture with one diagnosed target failure must accept a reviewed
+replacement for that target, produce a fully `PASSED` repaired run, and create a
+partial-render plan whose unchanged scene comes from baseline video and repaired
+scene comes from the new verified video. The output remains 1920×1080, 30-fps
+H.264 and all new artifacts pass manifest verification.
 
-Tampering with the baseline report or pointing an explicit baseline option at a
-missing file must stop before browser construction. Every written change report
-for an executed replay must be hashed in `artifact_manifest.json`.
+An out-of-scope proposal, tampered change report/baseline, unchanged target,
+failed repaired assertion, or mismatched scene set must be rejected without a
+repaired-success video. Proposal tests must never make a network request.
 
 ## Not Included
 
-- selector suggestions, model diagnosis, automatic repairs, retries, scene
-  rewrites, or partial rerendering;
-- pixel-diff heuristics, OCR, screenshot embedding, or visual model calls;
-- scheduled monitoring, history databases, queues, workers, alerts, or cloud
-  artifact storage.
+- DOM exploration, screenshots/model vision, autonomous retries, automatic
+  approval, URL/value/expectation edits, multi-scene repair, or general editing;
+- partial narration regeneration, audio splicing, captions, transitions, music,
+  visual effects, queues, workers, or cloud rendering;
+- benchmark suites, production auth/secrets, retention policy, monitoring, or
+  deployment infrastructure (Stage 10).
 
 ## Completion Status
 

@@ -62,12 +62,12 @@ compatibility and provenance reporting.
 Compare replay observations with prior successful evidence and identify broken
 selectors, assertions, or scene assumptions.
 
-## Stage 9 — Scene Repair and Partial Rerender (next)
+## Stage 9 — Scene Repair and Partial Rerender (complete)
 
 Propose bounded scene repairs, require appropriate verification, and rerender
 only invalidated portions of a demo.
 
-## Stage 10 — Benchmarks and Production Hardening
+## Stage 10 — Benchmarks and Production Hardening (next)
 
 Create representative evaluation fixtures, measure execution and verification
 quality, harden security and operations, and add production infrastructure only

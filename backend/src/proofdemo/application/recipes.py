@@ -245,6 +245,12 @@ class RecipeService:
 
     @staticmethod
     def _final_video(manifest: ArtifactManifest) -> ArtifactRecord:
+        repaired = next(
+            (item for item in manifest.artifacts if item.kind is ArtifactKind.REPAIRED_VIDEO),
+            None,
+        )
+        if repaired is not None:
+            return repaired
         narrated = next(
             (item for item in manifest.artifacts if item.kind is ArtifactKind.NARRATED_VIDEO),
             None,

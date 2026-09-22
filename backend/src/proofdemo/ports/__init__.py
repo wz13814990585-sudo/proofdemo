@@ -16,6 +16,7 @@ from proofdemo.ports.browser import (
     BrowserUnavailableError,
     DownloadObservation,
 )
+from proofdemo.ports.partial_render import PartialRenderPort, VideoSegment
 from proofdemo.ports.planner import (
     PlannerCandidate,
     PlannerPort,
@@ -28,6 +29,12 @@ from proofdemo.ports.render import (
     RenderPort,
     RenderSettings,
     RenderUnavailableError,
+)
+from proofdemo.ports.repair import (
+    RepairCandidate,
+    RepairPort,
+    RepairResponseError,
+    RepairUnavailableError,
 )
 from proofdemo.ports.speech import (
     SpeechDescriptor,
@@ -50,6 +57,7 @@ __all__ = [
     "BrowserUnavailableError",
     "DownloadObservation",
     "MediaInfo",
+    "PartialRenderPort",
     "PlannerCandidate",
     "PlannerPort",
     "PlannerResponseError",
@@ -58,8 +66,13 @@ __all__ = [
     "RenderPort",
     "RenderSettings",
     "RenderUnavailableError",
+    "RepairCandidate",
+    "RepairPort",
+    "RepairResponseError",
+    "RepairUnavailableError",
     "SpeechDescriptor",
     "SpeechPort",
     "SpeechSynthesisError",
     "SpeechUnavailableError",
+    "VideoSegment",
 ]
