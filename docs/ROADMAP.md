@@ -3,27 +3,39 @@
 The roadmap controls sequence, not detailed implementation. Only the stage in
 `CURRENT_STAGE.md` is authorized for implementation.
 
-## Stage 0 — Foundation (current)
+## Stage 0 — Foundation (complete)
 
 Create the repository, product and architecture documentation, API/frontend
 shells, authoritative DemoSpec models and schema, deterministic DemoRun
 lifecycle, test infrastructure, and local setup.
 
+## Stage 0.1 — Execution Contract Hardening (current)
+
+Separate execution from verification, stabilize DemoSpec identities and typed
+targets, require timezone-aware run history, make local configuration truthful,
+and clarify artifact ownership before a browser runtime consumes the contracts.
+
 ## Stage 1 — Deterministic Browser Execution
 
 Execute a manually authored DemoSpec with a Playwright adapter. Begin with
-navigation, click, fill, bounded wait, and screenshot actions against a local
-test application. No model planning or autonomous recovery.
+same-origin navigation, click, fill with non-sensitive demonstration data,
+bounded pause, and explicitly requested screenshot actions against a separate
+local test application. Return a lightweight execution report and finish the
+run as `EXECUTED`; do not claim verification. No model planning or autonomous
+recovery.
 
 ## Stage 2 — Assertions and Verified Scenes
 
 Evaluate explicit DOM, URL, download, and application-facing assertions. Give
-every scene a `PASSED`, `FAILED`, or `BLOCKED` outcome tied to evidence.
+every scene a `PASSED`, `FAILED`, or `BLOCKED` outcome tied to evidence, and
+enable the verified run transition from `EXECUTED` to `PASSED`.
 
 ## Stage 3 — Trace and Browser Recording
 
-Persist structured action/observation events, screenshots, logs, artifact
-metadata, and browser video without changing verification semantics.
+Persist the full structured action/observation trace, automatic evidence
+screenshots, logs, artifact metadata, and browser video without changing
+verification semantics. Stage 1's explicitly requested screenshots remain
+simple execution artifacts rather than the automatic capture system.
 
 ## Stage 4 — Deterministic Video Composition
 

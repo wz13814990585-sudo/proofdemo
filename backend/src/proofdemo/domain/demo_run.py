@@ -7,13 +7,14 @@ from enum import StrEnum
 from types import MappingProxyType
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class DemoRunStatus(StrEnum):
     CREATED = "CREATED"
     VALIDATED = "VALIDATED"
     RUNNING = "RUNNING"
+    EXECUTED = "EXECUTED"
     PASSED = "PASSED"
     FAILED = "FAILED"
     BLOCKED = "BLOCKED"
@@ -29,7 +30,10 @@ ALLOWED_TRANSITIONS = MappingProxyType(
         DemoRunStatus.VALIDATED: frozenset(
             {DemoRunStatus.RUNNING, DemoRunStatus.FAILED, DemoRunStatus.BLOCKED}
         ),
-        DemoRunStatus.RUNNING: TERMINAL_STATUSES,
+        DemoRunStatus.RUNNING: frozenset(
+            {DemoRunStatus.EXECUTED, DemoRunStatus.FAILED, DemoRunStatus.BLOCKED}
+        ),
+        DemoRunStatus.EXECUTED: frozenset({DemoRunStatus.FAILED, DemoRunStatus.BLOCKED}),
         DemoRunStatus.PASSED: frozenset(),
         DemoRunStatus.FAILED: frozenset(),
         DemoRunStatus.BLOCKED: frozenset(),
@@ -41,6 +45,18 @@ class InvalidRunTransition(ValueError):
     """Raised when a DemoRun state transition violates domain rules."""
 
 
+class InvalidRunTimestamp(ValueError):
+    """Raised when a DemoRun timestamp lacks timezone information."""
+
+
+def _utc_timestamp(value: datetime | None) -> datetime:
+    """Return a timezone-aware timestamp normalized to UTC."""
+    timestamp = value or datetime.now(UTC)
+    if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+        raise InvalidRunTimestamp("DemoRun timestamps must be timezone-aware")
+    return timestamp.astimezone(UTC)
+
+
 class RunTransition(BaseModel):
     """Immutable audit entry for a single accepted state transition."""
 
@@ -48,8 +64,13 @@ class RunTransition(BaseModel):
 
     from_status: DemoRunStatus
     to_status: DemoRunStatus
-    occurred_at: datetime
+    occurred_at: AwareDatetime
     reason: str | None = Field(default=None, min_length=1, max_length=2_000)
+
+    @field_validator("occurred_at")
+    @classmethod
+    def normalize_occurred_at(cls, value: datetime) -> datetime:
+        return value.astimezone(UTC)
 
     @model_validator(mode="after")
     def validate_transition(self) -> RunTransition:
@@ -68,9 +89,14 @@ class DemoRun(BaseModel):
     id: UUID
     spec_id: str = Field(pattern=r"^[a-z][a-z0-9_-]{0,63}$")
     status: DemoRunStatus = DemoRunStatus.CREATED
-    created_at: datetime
-    updated_at: datetime
+    created_at: AwareDatetime
+    updated_at: AwareDatetime
     transitions: tuple[RunTransition, ...] = ()
+
+    @field_validator("created_at", "updated_at")
+    @classmethod
+    def normalize_run_timestamp(cls, value: datetime) -> datetime:
+        return value.astimezone(UTC)
 
     @model_validator(mode="after")
     def validate_history(self) -> DemoRun:
@@ -100,7 +126,7 @@ class DemoRun(BaseModel):
 
 def create_demo_run(spec_id: str, *, now: datetime | None = None) -> DemoRun:
     """Create a new run without relying on mutable global state."""
-    timestamp = now or datetime.now(UTC)
+    timestamp = _utc_timestamp(now)
     return DemoRun(
         id=uuid4(),
         spec_id=spec_id,
@@ -116,11 +142,11 @@ def transition_demo_run(
     reason: str | None = None,
     now: datetime | None = None,
 ) -> DemoRun:
-    """Return a new run after applying one legal, auditable transition."""
+    """Return a new, fully validated run after one legal transition."""
     if to_status not in ALLOWED_TRANSITIONS[run.status]:
         raise InvalidRunTransition(f"illegal DemoRun transition: {run.status} -> {to_status}")
 
-    timestamp = now or datetime.now(UTC)
+    timestamp = _utc_timestamp(now)
     if timestamp < run.updated_at:
         raise InvalidRunTransition("transition timestamp cannot move backwards")
 
@@ -134,10 +160,11 @@ def transition_demo_run(
     except ValueError as error:
         raise InvalidRunTransition(str(error)) from error
 
-    return run.model_copy(
-        update={
-            "status": to_status,
-            "updated_at": timestamp,
-            "transitions": (*run.transitions, transition),
-        }
+    return DemoRun(
+        id=run.id,
+        spec_id=run.spec_id,
+        status=to_status,
+        created_at=run.created_at,
+        updated_at=timestamp,
+        transitions=(*run.transitions, transition),
     )

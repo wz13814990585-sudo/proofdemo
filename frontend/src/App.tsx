@@ -75,9 +75,9 @@ function App() {
         <div className="stage-card">
           <div>
             <span className="stage-label">Current build</span>
-            <strong>Stage 0 · Foundation</strong>
+            <strong>Stage 0.1 · Contracts hardened</strong>
           </div>
-          <p>Contracts, lifecycle, API, and local development are ready for deterministic execution.</p>
+          <p>Execution and verification now have separate, testable contracts.</p>
         </div>
       </section>
 

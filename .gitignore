@@ -15,6 +15,8 @@ frontend/dist/
 
 # Environment and local tools
 .env
+.env.local
+.env.*.local
 .DS_Store
 .idea/
 .vscode/
