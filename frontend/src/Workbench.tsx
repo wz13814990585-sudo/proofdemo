@@ -63,8 +63,15 @@ export default function Workbench() {
   const fetched = useRef({ spec: "", report: "", manifest: "" });
 
   useEffect(() => {
-    request<Health>("/health").then((value) => { setHealth(value); setOnline(true); })
-      .catch(() => setOnline(false));
+    let mounted = true;
+    const check = () => {
+      request<Health>("/health").then((value) => {
+        if (mounted) { setHealth(value); setOnline(true); }
+      }).catch(() => { if (mounted) setOnline(false); });
+    };
+    check();
+    const interval = window.setInterval(check, 5000);
+    return () => { mounted = false; window.clearInterval(interval); };
   }, []);
 
   const refresh = useCallback(async (id: string) => {
@@ -118,14 +125,15 @@ export default function Workbench() {
 
   async function generate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setSending(true); setError(null); setSpec(null); setReport(null); setManifest(null); setEvents([]);
-    fetched.current = { spec: "", report: "", manifest: "" };
+    setSending(true); setError(null);
     try {
       const created = await request<Job>("/jobs", {
         method: "POST", headers: { "Content-Type": "application/json", "X-ProofDemo-Client": "studio" },
         body: JSON.stringify({ source_url: url, goal, audience: audience.trim() || null,
           language, approximate_duration_seconds: Number(duration) }),
       });
+      setSpec(null); setReport(null); setManifest(null); setEvents([]);
+      fetched.current = { spec: "", report: "", manifest: "" };
       localStorage.setItem("proofdemo-job-id", created.id);
       setJob(created); setJobId(created.id);
     } catch (caught) {
