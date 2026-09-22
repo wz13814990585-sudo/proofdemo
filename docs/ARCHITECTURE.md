@@ -18,11 +18,10 @@ Application orchestration
 Domain  Adapters  Persistence
 ```
 
-Through Stage 3, the application layer contains focused deterministic execution,
-verification, tracing, and artifact-persistence services. They drive an
-application-owned browser port, whose first adapter is a synchronous Playwright
-Chromium session, and turn narrow browser observations into structured evidence
-and integrity-checked local artifacts.
+Through Stage 4, the application layer contains focused deterministic execution,
+verification, tracing, artifact-persistence, and composition services. Browser
+and render mechanics sit behind application-owned ports implemented by
+Playwright Chromium and FFmpeg adapters.
 
 ## Technology Choices
 
@@ -35,8 +34,8 @@ and integrity-checked local artifacts.
 - **pytest** for backend/domain tests; **Ruff** and **mypy** for static checks.
 - **Playwright** supplies the Chromium adapter behind an
   application-owned port.
-- **Remotion** is the intended deterministic render adapter in a later stage,
-  but is deliberately absent through Stage 2.
+- **FFmpeg/FFprobe** provide commodity media probing, scaling, letterboxing,
+  and H.264 encoding behind a render port. ProofDemo owns timeline policy.
 
 ## Repository Layout
 
@@ -155,9 +154,24 @@ type, and correlation metadata for every other artifact; a manifest cannot
 cryptographically include itself. All artifact paths are resolved and checked
 against the requested root before use.
 
+## Timeline and Render Boundary
+
+`CompositionService` accepts only an integrity-checked Stage 3 bundle whose run
+and verification statuses are both `PASSED`. It maps stable scene IDs to
+contiguous millisecond ranges by scaling correlated action/scene trace times to
+the probed browser-video duration. The versioned timeline always covers the
+complete source with positive, ordered, non-overlapping scene ranges.
+
+The FFmpeg adapter receives only a source path, output path, and fixed render
+settings. Stage 4 composition uses a 1920×1080 canvas, 30 fps, aspect-preserving
+Lanczos scale, fixed letterbox color, H.264/yuv420p, no audio, stripped metadata,
+and one encoding thread for repeatability. FFprobe validates dimensions, frame
+rate, codec, and duration after render. `timeline.json` and `demo.mp4` are then
+hashed into the final artifact manifest.
+
 ## DemoRun Lifecycle
 
-Stage 3 preserves this legal state graph:
+Stage 4 preserves this legal state graph; rendering cannot change it:
 
 ```text
 CREATED -> VALIDATED -> RUNNING -> EXECUTED -> PASSED
@@ -185,11 +199,11 @@ validated source origin, screenshots cannot escape their artifact directory,
 and literal fills are restricted by contract to non-sensitive demo data. The
 application-state hook accepts a validated key as data rather than code.
 Diagnostic logs are bounded and sanitized, and fill values are not copied into
-action trace payloads. Stage 3 does not support credential injection.
+action trace payloads. Stage 4 does not support credential injection.
 
 ## Deliberate Deferrals
 
-There is no edited timeline, video composition, MP4 output, planner, model call,
-database, queue, narrator, TTS provider, recipe, or cloud artifact store through
-Stage 3. Those are introduced only when their roadmap stage supplies executable
-acceptance criteria.
+There are no editorial transitions, zooms, overlays, captions, narration,
+audio, planner/model calls, database, queue, recipe, partial rerender, or cloud
+artifact store through Stage 4. Those are introduced only when their roadmap
+stage supplies executable acceptance criteria.

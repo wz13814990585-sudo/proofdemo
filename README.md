@@ -10,11 +10,10 @@ The product flow is:
 Intent -> Plan -> Execute -> Verify -> Capture -> Render
 ```
 
-This repository currently implements **Stage 3**: deterministic Playwright
-execution, evidence-backed scene verification, and correlated local artifacts
-for manually authored DemoSpecs. It records an immutable trace, automatic
-evidence screenshots, sanitized browser logs, browser video, and a hashed
-manifest without relying on an LLM success claim. See
+This repository currently implements **Stage 4**: deterministic Playwright
+execution, evidence-backed verification, correlated local artifacts, and basic
+1080p video composition for manually authored DemoSpecs. It produces a verified
+timeline and H.264 MP4 without relying on an LLM success claim. See
 [the current stage](docs/CURRENT_STAGE.md) for the exact scope.
 
 ## Prerequisites
@@ -22,6 +21,7 @@ manifest without relying on an LLM success claim. See
 - Python 3.11 or newer
 - Node.js 20.19 or newer
 - npm 10 or newer
+- FFmpeg and FFprobe with H.264 encoding support
 
 ## Backend setup
 
@@ -79,13 +79,13 @@ Then execute the checked-in DemoSpec in another terminal:
 proofdemo run examples/demo_spec.json --artifacts artifacts/todo-demo
 ```
 
-A successful Stage 3 run exits `0`, transitions through `EXECUTED` to `PASSED`,
+A successful Stage 4 run exits `0`, transitions through `EXECUTED` to `PASSED`,
 and writes `execution_report.json`, `trace.jsonl`, `browser.log.jsonl`,
-`browser.webm`, `artifact_manifest.json`, the requested screenshot, and
-correlated evidence screenshots. The report contains scene and assertion
-outcomes with structured expected and observed evidence. `EXECUTED` continues
-to mean only that browser actions completed; only the deterministic verifier
-can produce `PASSED`.
+`browser.webm`, `timeline.json`, `demo.mp4`, `artifact_manifest.json`, the
+requested screenshot, and correlated evidence screenshots. The final MP4 is
+H.264/yuv420p at 1920×1080 and 30 fps. `EXECUTED` continues to mean only that
+browser actions completed; only the deterministic verifier can produce
+`PASSED`, and only a verified integrity-checked run is composed.
 
 The CLI uses exit code `1` for an action-level `FAILED` result, `2` for blocked
 browser infrastructure or artifact output, and `64` for an invalid input spec.
@@ -130,11 +130,13 @@ model.
   not rewrite deterministic assertion outcomes.
 - The artifact manifest records relative paths, media types, byte counts,
   SHA-256 digests, and stable correlation IDs for every other run artifact.
+- Timeline policy is project-owned; FFmpeg is a narrow adapter for probing,
+  scaling, letterboxing, and encoding.
 
 ## Repository map
 
 ```text
-backend/src/proofdemo/  API, domain, execution/verification/capture, and adapters
+backend/src/proofdemo/  API, execution/verification/capture/render, and adapters
 frontend/               React and TypeScript frontend
 shared/schemas/         generated cross-runtime contracts
 examples/               valid inputs and the deterministic Todo fixture
@@ -153,7 +155,7 @@ docs/                   product, architecture, roadmap, and stage scope
 ## Security
 
 Never commit credentials or place them in DemoSpec files. `.env` is ignored;
-`.env.example` documents non-secret configuration only. Stage 3 accepts only
+`.env.example` documents non-secret configuration only. Stage 4 accepts only
 non-sensitive literal fill data, constrains navigation to one origin, and does
 not inject browser credentials. The application-state assertion reads one
 validated top-level key and cannot execute spec-provided JavaScript. Fill

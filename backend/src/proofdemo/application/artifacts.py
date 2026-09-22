@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import mimetypes
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
@@ -23,6 +24,20 @@ class ArtifactKind(StrEnum):
     REQUESTED_SCREENSHOT = "REQUESTED_SCREENSHOT"
     EVIDENCE_SCREENSHOT = "EVIDENCE_SCREENSHOT"
     BROWSER_VIDEO = "BROWSER_VIDEO"
+    TIMELINE = "TIMELINE"
+    FINAL_VIDEO = "FINAL_VIDEO"
+
+
+class ArtifactDeclaration(BaseModel):
+    """A post-execution artifact to include in the final manifest."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    path: str
+    kind: ArtifactKind
+    scene_id: str | None = None
+    action_id: str | None = None
+    assertion_id: str | None = None
 
 
 class ArtifactRecord(BaseModel):
@@ -65,7 +80,13 @@ class ArtifactWriteError(RuntimeError):
 class ArtifactWriter:
     """Persist one completed execution bundle and build its integrity manifest."""
 
-    def persist(self, bundle: ExecutionBundle, artifact_dir: Path) -> ArtifactManifest:
+    def persist(
+        self,
+        bundle: ExecutionBundle,
+        artifact_dir: Path,
+        *,
+        extra_artifacts: Sequence[ArtifactDeclaration] = (),
+    ) -> ArtifactManifest:
         artifact_dir.mkdir(parents=True, exist_ok=True)
         report = bundle.report
 
@@ -90,7 +111,7 @@ class ArtifactWriter:
             report.model_dump_json(indent=2) + "\n",
         )
 
-        records = self._artifact_records(bundle, artifact_dir)
+        records = self._artifact_records(bundle, artifact_dir, extra_artifacts)
         manifest = ArtifactManifest(
             run_id=str(report.run.id),
             spec_id=report.run.spec_id,
@@ -108,6 +129,7 @@ class ArtifactWriter:
         self,
         bundle: ExecutionBundle,
         artifact_dir: Path,
+        extra_artifacts: Sequence[ArtifactDeclaration],
     ) -> list[ArtifactRecord]:
         report = bundle.report
         declarations: list[tuple[str, ArtifactKind, str | None, str | None, str | None]] = [
@@ -146,6 +168,16 @@ class ArtifactWriter:
                     None,
                 )
             )
+        declarations.extend(
+            (
+                declaration.path,
+                declaration.kind,
+                declaration.scene_id,
+                declaration.action_id,
+                declaration.assertion_id,
+            )
+            for declaration in extra_artifacts
+        )
 
         records: list[ArtifactRecord] = []
         seen: set[str] = set()
