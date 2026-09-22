@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import threading
 import time
 from collections.abc import Iterator
@@ -13,6 +14,7 @@ from pathlib import Path
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from proofdemo.adapters.ffmpeg_polish import FFmpegVideoPolisher
 from proofdemo.adapters.playwright_explorer import PlaywrightExplorer
 from proofdemo.api import create_app
 from proofdemo.application.jobs import JobIntegrityError, JobManager, JobStatus
@@ -218,3 +220,55 @@ def test_changed_exploration_report_blocks_approved_execution(
         time.sleep(0.05)
     assert jobs.get(created.id).status is JobStatus.BLOCKED  # type: ignore[union-attr]
     assert not (tmp_path / str(created.id) / "run" / "browser.webm").exists()
+
+
+def test_product_job_delivers_polished_video_after_verified_render(
+    local_site: tuple[str, str], tmp_path: Path
+) -> None:
+    name, url = local_site
+    jobs = JobManager(
+        tmp_path,
+        planner_factory=lambda: GroundedFixturePlanner(name),
+        explorer_factory=PlaywrightExplorer,
+        advisor_factory=LinkAdvisor,
+        polisher_factory=FFmpegVideoPolisher,
+    )
+    created = jobs.create(DemoIntent(source_url=url, goal="Create one item and verify it"))
+    deadline = time.monotonic() + 90
+    approved = False
+    while time.monotonic() < deadline:
+        job = jobs.get(created.id)
+        assert job is not None
+        if job.status is JobStatus.AWAITING_APPROVAL and not approved:
+            jobs.approve(created.id)
+            approved = True
+        if job.status in {JobStatus.PASSED, JobStatus.FAILED, JobStatus.BLOCKED}:
+            break
+        time.sleep(0.05)
+    job = jobs.get(created.id)
+    assert job is not None
+    assert job.status is JobStatus.PASSED, job.message
+    assert job.video_kind == "POLISHED_VIDEO"
+    assert jobs.video_path(created.id).name == "polished_demo.mp4"
+    assert (tmp_path / str(created.id) / "run" / "demo.mp4").is_file()
+    assert (tmp_path / str(created.id) / "run" / "polish_captions.json").is_file()
+    polish_plan = json.loads((tmp_path / str(created.id) / "run" / "polish_plan.json").read_text())
+    assert polish_plan["focus_cues"]
+    app = create_app(Settings(environment="test", job_root=tmp_path), jobs)
+
+    async def check_plan_api() -> None:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get(f"/jobs/{created.id}/polish-plan")
+            assert response.status_code == 200
+            assert response.json()["source_sha256"] == polish_plan["source_sha256"]
+
+    asyncio.run(check_plan_api())
+    plan_path = tmp_path / str(created.id) / "run" / "polish_plan.json"
+    plan_path.write_bytes(b"tampered")
+
+    async def check_tamper_gate() -> None:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            assert (await client.get(f"/jobs/{created.id}/polish-plan")).status_code == 409
+            assert (await client.get(f"/jobs/{created.id}/video")).status_code == 409
+
+    asyncio.run(check_tamper_gate())

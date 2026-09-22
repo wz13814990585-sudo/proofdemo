@@ -19,6 +19,7 @@ from proofdemo.adapters.playwright_browser import PlaywrightBrowser
 from proofdemo.application.artifacts import ArtifactKind, ArtifactManifest, ArtifactWriter
 from proofdemo.application.execution import ExecutionService
 from proofdemo.application.rendering import CompositionService
+from proofdemo.application.trace import TraceEventKind
 from proofdemo.cli import EXIT_EXECUTED, run
 from proofdemo.domain.demo_run import DemoRunStatus
 from proofdemo.domain.demo_spec import (
@@ -98,6 +99,13 @@ def test_real_chromium_executes_example_and_captures_screenshot(
     assert report.browser_video_path == "browser.webm"
     assert (tmp_path / "browser.webm").stat().st_size > 0
     assert list(tmp_path.glob("*.webm")) == [tmp_path / "browser.webm"]
+    focus_events = [
+        event
+        for event in bundle.trace_events
+        if event.kind is TraceEventKind.ACTION_STARTED and "focus_x" in event.data
+    ]
+    assert {event.data["action_type"] for event in focus_events} >= {"fill", "click"}
+    assert all(0 <= event.data["focus_x"] <= 1 for event in focus_events)
 
     writer = ArtifactWriter()
     source_manifest = writer.persist(bundle, tmp_path)

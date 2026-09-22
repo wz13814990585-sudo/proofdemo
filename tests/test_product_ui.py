@@ -71,6 +71,7 @@ def test_workbench_submits_intent_and_renders_verified_result(vite_url: str) -> 
         "exploration_status": "COMPLETE",
         "exploration_page_count": 1,
         "grounding_status": "GROUNDED",
+        "video_kind": "POLISHED_VIDEO",
     }
     spec = {
         "id": "ui_demo",
@@ -174,7 +175,22 @@ def test_workbench_submits_intent_and_renders_verified_result(vite_url: str) -> 
         elif path == f"/jobs/{job_id}/report":
             body = report
         elif path == f"/jobs/{job_id}/manifest":
-            body = {"artifacts": [{"kind": "FINAL_VIDEO", "path": "demo.mp4"}]}
+            body = {"artifacts": [{"kind": "POLISHED_VIDEO", "path": "polished_demo.mp4"}]}
+        elif path == f"/jobs/{job_id}/polish-plan":
+            body = {
+                "output_duration_ms": 2800,
+                "warnings": [],
+                "scenes": [
+                    {
+                        "scene_id": "create_task",
+                        "title": "Create the task",
+                        "display_start_ms": 0,
+                        "display_end_ms": 2800,
+                        "passed_assertions": 1,
+                    }
+                ],
+                "focus_cues": [{"scene_id": "create_task", "action_id": "open", "kind": "click"}],
+            }
         elif path == f"/jobs/{job_id}/event-log":
             body = [
                 {
@@ -213,9 +229,13 @@ def test_workbench_submits_intent_and_renders_verified_result(vite_url: str) -> 
         assert page.get_by_text("计划证据覆盖").count() == 1
         page.get_by_role("tab", name="验证").click()
         page.get_by_text("visible", exact=True).wait_for(timeout=10_000)
+        assert page.locator(".verification-card").count() == 1
+        page.get_by_role("tab", name="视频编辑").click()
+        page.get_by_text("1 个真实目标镜头").wait_for(timeout=10_000)
+        page.get_by_text("click · open").wait_for(timeout=10_000)
 
         assert page.locator(".job-state").inner_text() == "PASSED"
-        assert page.locator(".verification-card").count() == 1
+        assert page.locator(".panel-title").get_by_text("润色版").count() == 1
         assert page.locator(".event-item").count() == 1
         assert submitted[0]["source_url"] == "https://product.example.test/"
         assert submitted[0]["goal"] == "Create a task"

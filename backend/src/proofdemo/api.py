@@ -28,6 +28,7 @@ from proofdemo.config import Settings
 from proofdemo.domain.demo_spec import DemoSpec
 from proofdemo.domain.exploration import ExplorationReport
 from proofdemo.domain.planning import DemoIntent
+from proofdemo.domain.video_polish import VideoPolishPlan
 
 
 class HealthResponse(BaseModel):
@@ -181,6 +182,18 @@ def create_app(settings: Settings | None = None, jobs: JobManager | None = None)
         except FileNotFoundError as error:
             raise HTTPException(
                 status_code=404, detail="Artifact manifest not available"
+            ) from error
+        except JobIntegrityError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @application.get("/jobs/{job_id}/polish-plan", response_model=VideoPolishPlan)
+    def get_polish_plan(job_id: UUID) -> VideoPolishPlan:
+        require_job(job_id)
+        try:
+            return job_manager.polish_plan(job_id)
+        except FileNotFoundError as error:
+            raise HTTPException(
+                status_code=404, detail="Video polish plan not available"
             ) from error
         except JobIntegrityError as error:
             raise HTTPException(status_code=409, detail=str(error)) from error

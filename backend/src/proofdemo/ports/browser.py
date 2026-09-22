@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from pydantic import JsonValue
 
@@ -49,6 +49,20 @@ class BrowserSessionArtifacts:
 
     video_path: Path | None = None
     logs: tuple[BrowserLogEntry, ...] = ()
+
+
+@dataclass(frozen=True)
+class VisualFocus:
+    """A normalized viewport point; no DOM text or input value."""
+
+    x: float
+    y: float
+
+
+@runtime_checkable
+class VisualFocusPort(Protocol):
+    def visual_focus(self, target: ElementTarget) -> VisualFocus | None:
+        """Optionally locate a presentation focus without affecting execution."""
 
 
 class BrowserPort(Protocol):

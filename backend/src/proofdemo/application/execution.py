@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from enum import StrEnum
+from math import isfinite
 from pathlib import Path
 from typing import Literal
 
@@ -40,6 +42,7 @@ from proofdemo.ports.browser import (
     BrowserPort,
     BrowserSessionArtifacts,
     BrowserUnavailableError,
+    VisualFocusPort,
 )
 
 
@@ -310,11 +313,26 @@ class ExecutionService:
         trace: TraceRecorder,
     ) -> tuple[OutcomeStatus, str] | None:
         for action in scene.actions:
+            start_data: dict[str, JsonValue] = {"action_type": action.type}
+            if isinstance(action, (ClickAction, FillAction)) and isinstance(
+                self._browser, VisualFocusPort
+            ):
+                with suppress(Exception):
+                    focus = self._browser.visual_focus(action.target)
+                    if (
+                        focus is not None
+                        and isfinite(focus.x)
+                        and isfinite(focus.y)
+                        and 0 <= focus.x <= 1
+                        and 0 <= focus.y <= 1
+                    ):
+                        start_data["focus_x"] = focus.x
+                        start_data["focus_y"] = focus.y
             trace.record(
                 TraceEventKind.ACTION_STARTED,
                 scene_id=scene.id,
                 action_id=action.id,
-                data={"action_type": action.type},
+                data=start_data,
             )
             try:
                 screenshot_path = self._execute_action(action, artifact_dir)
