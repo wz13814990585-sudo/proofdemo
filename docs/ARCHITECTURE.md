@@ -18,10 +18,11 @@ Application orchestration
 Domain  Adapters  Persistence
 ```
 
-Through Stage 4, the application layer contains focused deterministic execution,
-verification, tracing, artifact-persistence, and composition services. Browser
-and render mechanics sit behind application-owned ports implemented by
-Playwright Chromium and FFmpeg adapters.
+Through Stage 5, the application layer contains a bounded planning service plus
+focused deterministic execution, verification, tracing, artifact-persistence,
+and composition services. Browser, render, and model-provider mechanics sit
+behind application-owned ports implemented by Playwright Chromium, FFmpeg, and
+an optional OpenAI adapter.
 
 ## Technology Choices
 
@@ -36,6 +37,8 @@ Playwright Chromium and FFmpeg adapters.
   application-owned port.
 - **FFmpeg/FFprobe** provide commodity media probing, scaling, letterboxing,
   and H.264 encoding behind a render port. ProofDemo owns timeline policy.
+- **OpenAI Responses API** provides optional structured planning behind a
+  planner port, with an explicit model, no tools, and no stored conversation.
 
 ## Repository Layout
 
@@ -134,6 +137,20 @@ JavaScript.
 The Todo fixture under `examples/todo_app/` is deliberately independent of the
 ProofDemo frontend. It is a deterministic execution target, not product UI.
 
+## Planner Boundary
+
+`PlanningService` accepts a strict `DemoIntent` and a `PlannerPort`. The OpenAI
+adapter makes one structured-output request whose parsed type is the
+authoritative DemoSpec model. It has no browser, trace, execution, or artifact
+capability and cannot enter the DemoRun lifecycle.
+
+ProofDemo reconstructs the returned model through domain validation and rejects
+any candidate whose normalized source origin differs from the requested origin.
+The result is explicitly a review-required proposal: `proofdemo plan` writes it
+atomically, while `proofdemo run` remains a separate user action. Missing model
+or provider configuration blocks only planning; manually authored DemoSpecs
+continue through the deterministic pipeline without model access.
+
 ## Trace and Artifact Boundary
 
 `TraceRecorder` produces immutable versioned events with contiguous sequence
@@ -171,7 +188,7 @@ hashed into the final artifact manifest.
 
 ## DemoRun Lifecycle
 
-Stage 4 preserves this legal state graph; rendering cannot change it:
+Stage 5 preserves this legal state graph; planning and rendering cannot change it:
 
 ```text
 CREATED -> VALIDATED -> RUNNING -> EXECUTED -> PASSED
@@ -199,11 +216,14 @@ validated source origin, screenshots cannot escape their artifact directory,
 and literal fills are restricted by contract to non-sensitive demo data. The
 application-state hook accepts a validated key as data rather than code.
 Diagnostic logs are bounded and sanitized, and fill values are not copied into
-action trace payloads. Stage 4 does not support credential injection.
+action trace payloads. Provider credentials are read only from environment
+configuration and are never admitted to DemoIntent, DemoSpec, traces, or
+artifacts. Stage 5 does not support browser credential injection.
 
 ## Deliberate Deferrals
 
-There are no editorial transitions, zooms, overlays, captions, narration,
-audio, planner/model calls, database, queue, recipe, partial rerender, or cloud
-artifact store through Stage 4. Those are introduced only when their roadmap
-stage supplies executable acceptance criteria.
+There are no model tools, autonomous exploration, locator repair, editorial
+transitions, zooms, overlays, captions, narration, audio, database, queue,
+recipe, partial rerender, or cloud artifact store through Stage 5. Those are
+introduced only when their roadmap stage supplies executable acceptance
+criteria.

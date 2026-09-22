@@ -12,6 +12,7 @@ ENVIRONMENT_VARIABLES = (
     "PROOFDEMO_API_HOST",
     "PROOFDEMO_API_PORT",
     "PROOFDEMO_FRONTEND_ORIGIN",
+    "PROOFDEMO_OPENAI_MODEL",
 )
 
 
@@ -32,6 +33,12 @@ def test_settings_read_namespaced_environment(monkeypatch: pytest.MonkeyPatch) -
     assert settings.api_host == "0.0.0.0"
     assert settings.api_port == 9000
     assert settings.frontend_origin == "http://127.0.0.1:4173"
+
+
+def test_settings_read_explicit_planner_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PROOFDEMO_OPENAI_MODEL", "account-supported-model")
+
+    assert Settings.from_env().openai_model == "account-supported-model"
 
 
 def test_settings_load_dotenv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -42,12 +42,12 @@ simple execution artifacts rather than the automatic capture system.
 Transform verified traces and recordings into a repeatable timeline and basic
 1080p video with deterministic composition.
 
-## Stage 5 — Demo Planner (next)
+## Stage 5 — Demo Planner (complete)
 
 Use a bounded model call to turn natural-language intent into a reviewable
 DemoSpec that the existing deterministic pipeline can validate and execute.
 
-## Stage 6 — Narration and TTS
+## Stage 6 — Narration and TTS (next)
 
 Generate narration constrained by verified events, synthesize speech, and align
 audio to scene timing without inventing success claims.

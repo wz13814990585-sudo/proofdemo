@@ -10,10 +10,10 @@ The product flow is:
 Intent -> Plan -> Execute -> Verify -> Capture -> Render
 ```
 
-This repository currently implements **Stage 4**: deterministic Playwright
-execution, evidence-backed verification, correlated local artifacts, and basic
-1080p video composition for manually authored DemoSpecs. It produces a verified
-timeline and H.264 MP4 without relying on an LLM success claim. See
+This repository currently implements **Stage 5**: a bounded, optional planner
+plus deterministic Playwright execution, evidence-backed verification,
+correlated local artifacts, and basic 1080p video composition. A model may
+propose a reviewable DemoSpec, but it cannot execute it or claim success. See
 [the current stage](docs/CURRENT_STAGE.md) for the exact scope.
 
 ## Prerequisites
@@ -36,6 +36,11 @@ python -m pip install -e '.[dev]'
 python -m playwright install chromium
 cp .env.example .env
 ```
+
+The deterministic pipeline does not require an API key. To use the optional
+planner, set `OPENAI_API_KEY` in the environment and select an explicit model
+with `PROOFDEMO_OPENAI_MODEL` or `--model`; ProofDemo never selects a floating
+default model for you.
 
 Start the API:
 
@@ -67,7 +72,23 @@ Open `http://127.0.0.1:5173`. The frontend checks the API health endpoint. Set
 
 ## Run the deterministic example
 
-Start the separate Todo fixture in one terminal:
+To create a candidate DemoSpec from a goal without running a browser:
+
+```bash
+proofdemo plan https://app.example.test/ \
+  --goal "Create a launch task" \
+  --model YOUR_EXPLICIT_MODEL \
+  --output candidate.json
+```
+
+Review the generated file before passing it to `proofdemo run`. Planning is one
+structured-output call with no tools or conversation persistence, and the
+candidate is revalidated against the same-origin DemoSpec contract. See the
+[OpenAI structured outputs guide](https://developers.openai.com/api/docs/guides/structured-outputs)
+for the provider mechanism used by the adapter.
+
+For the checked-in deterministic example, start the separate Todo fixture in
+one terminal:
 
 ```bash
 python scripts/serve_todo_app.py
@@ -132,6 +153,8 @@ model.
   SHA-256 digests, and stable correlation IDs for every other run artifact.
 - Timeline policy is project-owned; FFmpeg is a narrow adapter for probing,
   scaling, letterboxing, and encoding.
+- A planner can propose only a DemoSpec candidate. ProofDemo revalidates it,
+  preserves the requested origin, and requires a separate explicit run command.
 
 ## Repository map
 
@@ -154,11 +177,13 @@ docs/                   product, architecture, roadmap, and stage scope
 
 ## Security
 
-Never commit credentials or place them in DemoSpec files. `.env` is ignored;
+Never commit credentials or place them in DemoIntent or DemoSpec files. `.env` is ignored;
 `.env.example` documents non-secret configuration only. Stage 4 accepts only
 non-sensitive literal fill data, constrains navigation to one origin, and does
 not inject browser credentials. The application-state assertion reads one
 validated top-level key and cannot execute spec-provided JavaScript. Fill
 values are omitted from action trace payloads, and browser diagnostic text is
-bounded and sanitized before persistence. Destructive-action safeguards remain
-a later-stage requirement.
+bounded and sanitized before persistence. Stage 5 reads provider credentials
+only from the environment and never stores them in planner inputs, candidates,
+traces, or artifacts. Destructive-action safeguards remain a later-stage
+requirement.

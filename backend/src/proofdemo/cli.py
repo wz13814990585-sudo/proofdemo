@@ -7,16 +7,22 @@ import json
 import sys
 from collections.abc import Sequence
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 from pydantic import ValidationError
 
 from proofdemo.adapters.ffmpeg_render import FFmpegRenderAdapter
+from proofdemo.adapters.openai_planner import OpenAIPlanner
 from proofdemo.adapters.playwright_browser import PlaywrightBrowser
 from proofdemo.application.artifacts import ArtifactWriteError, ArtifactWriter
 from proofdemo.application.execution import ExecutionService
+from proofdemo.application.planning import InvalidPlannerCandidate, PlanningService
 from proofdemo.application.rendering import CompositionRefusedError, CompositionService
+from proofdemo.config import Settings
 from proofdemo.domain.demo_run import DemoRunStatus
 from proofdemo.domain.demo_spec import DemoSpec
+from proofdemo.domain.planning import DemoIntent
+from proofdemo.ports.planner import PlannerResponseError, PlannerUnavailableError
 from proofdemo.ports.render import RenderFailedError, RenderUnavailableError
 
 EXIT_EXECUTED = 0
@@ -31,6 +37,14 @@ def _parser() -> argparse.ArgumentParser:
     run = commands.add_parser("run", help="execute a validated DemoSpec")
     run.add_argument("spec", type=Path, help="path to a DemoSpec JSON file")
     run.add_argument("--artifacts", required=True, type=Path, help="artifact output directory")
+    plan = commands.add_parser("plan", help="create a reviewable DemoSpec candidate")
+    plan.add_argument("source_url", help="same-origin application URL")
+    plan.add_argument("--goal", required=True, help="natural-language demo goal")
+    plan.add_argument("--output", required=True, type=Path, help="candidate JSON path")
+    plan.add_argument("--audience")
+    plan.add_argument("--language", default="en")
+    plan.add_argument("--duration", type=int, dest="approximate_duration_seconds")
+    plan.add_argument("--model", help="explicit OpenAI model; overrides environment")
     return parser
 
 
@@ -39,11 +53,7 @@ def _load_spec(path: Path) -> DemoSpec:
     return DemoSpec.model_validate(raw)
 
 
-def run(argv: Sequence[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
-    if args.command != "run":
-        return EXIT_INVALID_INPUT
-
+def _run_spec(args: argparse.Namespace) -> int:
     try:
         spec = _load_spec(args.spec)
     except (OSError, json.JSONDecodeError, ValidationError) as error:
@@ -84,6 +94,67 @@ def run(argv: Sequence[str] | None = None) -> int:
     if report.run.status is DemoRunStatus.FAILED:
         return EXIT_FAILED
     return EXIT_BLOCKED
+
+
+def _write_candidate(spec: DemoSpec, output: Path) -> None:
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=output.parent,
+        prefix=f".{output.name}.",
+        delete=False,
+    ) as temporary:
+        temporary.write(spec.model_dump_json(indent=2) + "\n")
+        temporary.flush()
+        temporary_path = Path(temporary.name)
+    temporary_path.replace(output)
+
+
+def _plan_spec(args: argparse.Namespace) -> int:
+    try:
+        intent = DemoIntent(
+            source_url=args.source_url,
+            goal=args.goal,
+            audience=args.audience,
+            language=args.language,
+            approximate_duration_seconds=args.approximate_duration_seconds,
+        )
+    except ValidationError as error:
+        print(f"Invalid demo intent: {error}", file=sys.stderr)
+        return EXIT_INVALID_INPUT
+
+    model = args.model or Settings.from_env().openai_model
+    if not model:
+        print(
+            "Planner blocked: set --model or PROOFDEMO_OPENAI_MODEL",
+            file=sys.stderr,
+        )
+        return EXIT_BLOCKED
+    try:
+        result = PlanningService(OpenAIPlanner(model)).plan(intent)
+        _write_candidate(result.spec, args.output)
+    except PlannerUnavailableError as error:
+        print(f"Planner blocked: {error}", file=sys.stderr)
+        return EXIT_BLOCKED
+    except (PlannerResponseError, InvalidPlannerCandidate) as error:
+        print(f"Planner failed: {error}", file=sys.stderr)
+        return EXIT_FAILED
+    except OSError as error:
+        print(f"Could not write candidate: {error}", file=sys.stderr)
+        return EXIT_BLOCKED
+
+    print(f"PLANNED (review required): {args.output} [{result.provider}/{result.model}]")
+    return EXIT_EXECUTED
+
+
+def run(argv: Sequence[str] | None = None) -> int:
+    args = _parser().parse_args(argv)
+    if args.command == "run":
+        return _run_spec(args)
+    if args.command == "plan":
+        return _plan_spec(args)
+    return EXIT_INVALID_INPUT
 
 
 def main() -> None:

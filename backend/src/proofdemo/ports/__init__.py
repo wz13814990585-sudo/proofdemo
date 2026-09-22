@@ -9,6 +9,12 @@ from proofdemo.ports.browser import (
     BrowserUnavailableError,
     DownloadObservation,
 )
+from proofdemo.ports.planner import (
+    PlannerCandidate,
+    PlannerPort,
+    PlannerResponseError,
+    PlannerUnavailableError,
+)
 from proofdemo.ports.render import (
     MediaInfo,
     RenderFailedError,
@@ -26,6 +32,10 @@ __all__ = [
     "BrowserUnavailableError",
     "DownloadObservation",
     "MediaInfo",
+    "PlannerCandidate",
+    "PlannerPort",
+    "PlannerResponseError",
+    "PlannerUnavailableError",
     "RenderFailedError",
     "RenderPort",
     "RenderSettings",
