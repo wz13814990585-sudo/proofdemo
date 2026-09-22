@@ -1,80 +1,48 @@
-# Current Stage — Stage 10: Benchmarks and Production Hardening
+# 当前阶段 — Stage 10：基准评估与生产强化
 
-## Goal
+## 目标
 
-Measure the core evidence pipeline against representative deterministic cases,
-close the remaining safety and operational gaps, and declare V1 complete only
-when measurable release gates and end-to-end acceptance pass.
+使用具有代表性的确定性案例衡量核心证据管线，补齐剩余的安全和运维缺口；只有在可度量的发布门禁与端到端验收全部通过后，才能宣布 V1 完成。
 
-## Required Outcomes
+## 必须实现的结果
 
-1. A versioned benchmark suite exercises verified success, assertion failure,
-   action failure, and blocked infrastructure through the real application
-   services with deterministic adapters.
-2. The benchmark report measures terminal-outcome accuracy, evidence coverage,
-   trace sequence/correlation integrity, per-case results, and explicit release
-   thresholds. The checked-in suite must meet every threshold.
-3. `proofdemo benchmark --output ...` runs offline, atomically writes its report,
-   returns nonzero when a threshold fails, and makes no provider/network calls.
-4. A deterministic pre-execution safety assessment blocks credential-like fills
-   and requires fresh explicit approval for named destructive/financial/account
-   actions. Replay and repair do not inherit prior approval.
-5. Safety decisions and explicit approvals are persisted and integrity-recorded
-   for every executed run without changing verification semantics.
-6. DemoSpec collection and execution budgets prevent unbounded scene/action/
-   assertion/pause workloads while preserving representative demos.
-7. Production configuration rejects wildcard/insecure frontend origins, API
-   responses use defensive headers, docs remain disabled in production, and
-   diagnostics continue to redact common credential shapes.
-8. CI runs schema drift, full tests (including Chromium/FFmpeg integration),
-   Ruff, mypy, and frontend production build on supported versions.
-9. Security policy, threat model, local-production operations, incident/retention
-   guidance, release checklist, and deferred infrastructure decisions are
-   documented truthfully.
-10. The frontend and package metadata reflect V1 rather than a stale early-stage
-    label; package/API version becomes `1.0.0`.
-11. A final real Todo run and recipe replay produce verified manifests, 1080p
-    H.264 video, compatible replay, and `UNCHANGED` comparison.
-12. No database, queue, Kubernetes, cloud store, or background worker is added
-    without benchmark evidence that the modular local runtime needs it.
+1. 一套有版本的基准测试，通过确定性适配器和真实应用服务覆盖：验证成功、断言失败、操作失败和基础设施阻塞。
+2. 基准报告衡量终态结果准确率、证据覆盖率、轨迹序列/关联完整性、逐案例结果和明确的发布阈值。仓库内置测试集必须达到全部阈值。
+3. `proofdemo benchmark --output ...` 可离线运行、原子写入报告、在阈值未达标时返回非零退出码，并且不调用提供方或网络。
+4. 确定性的执行前安全评估会阻止类似凭据的填充，并要求对具名的破坏性、金融或账户操作给予当次明确批准。重放和修复不得继承此前批准。
+5. 每次实际执行都必须持久化安全决策与明确批准，并将其记录到完整性清单中，同时不得改变验证语义。
+6. DemoSpec 的集合与执行预算应阻止无界的场景、操作、断言和暂停工作负载，同时仍能支持具有代表性的演示。
+7. 生产配置应拒绝通配符或不安全的前端源站；API 响应使用防御性响应头；生产环境继续禁用接口文档；诊断信息继续脱敏常见凭据形式。
+8. CI 在受支持版本上执行 schema 漂移检查、完整测试（包含 Chromium/FFmpeg 集成）、Ruff、mypy 和前端生产构建。
+9. 如实记录安全策略、威胁模型、本地生产运维、事件与保留指南、发布清单，以及有意推迟的基础设施决策。
+10. 前端和包元数据应体现 V1，而不是过时的早期阶段标签；包/API 版本升级为 `1.0.0`。
+11. 最终真实 Todo 运行和配方重放应生成经过验证的清单、1080p H.264 视频、兼容的重放，以及 `UNCHANGED` 比较结果。
+12. 在基准证据表明本地模块化运行时确有需要之前，不得增加数据库、队列、Kubernetes、云存储或后台工作进程。
 
-## Release Gates
+## 发布门禁
 
-- terminal-outcome accuracy: `1.00`;
-- expected evidence coverage: `1.00`;
-- trace sequence/correlation integrity: `1.00`;
-- full test suite, Ruff format/lint, mypy, schema drift, and frontend build pass;
-- real Chromium/FFmpeg run-to-replay acceptance passes with valid hashes;
-- repository contains no committed secret or generated runtime artifact.
+- 终态结果准确率：`1.00`；
+- 预期证据覆盖率：`1.00`；
+- 轨迹序列/关联完整性：`1.00`；
+- 完整测试套件、Ruff 格式/检查、mypy、schema 漂移检查和前端构建全部通过；
+- 真实 Chromium/FFmpeg 的运行到重放验收通过，并且哈希有效；
+- 仓库中没有已提交的密钥或运行时生成产物。
 
-## Not Included
+## 不在范围内
 
-- hosted multi-tenant control plane, user accounts, billing, cloud deployment,
-  distributed queues/workers, Kubernetes, or remote artifact storage;
-- scheduled monitoring, browser credential vault, arbitrary destructive-action
-  execution, general DOM exploration, or autonomous repair loops;
-- claims of scale, availability, or provider quality not measured here.
+- 托管式多租户控制平面、用户账户、计费、云部署、分布式队列/工作进程、Kubernetes 或远程产物存储；
+- 定时监控、浏览器凭据保管库、任意破坏性操作执行、通用 DOM 探索或自主修复循环；
+- 未在此处测量的规模、可用性或提供方质量声明。
 
-## Completion Status
+## 完成状态
 
 `COMPLETE`
 
-## V1 Acceptance Record — 2026-09-22
+## V1 验收记录 — 2026-09-22
 
-- Offline benchmark: `PASSED`; 4/4 representative cases passed with terminal
-  outcome accuracy `1.0`, expected evidence coverage `1.0`, and trace
-  integrity `1.0`.
-- Automated validation: 133 tests passed under Python 3.12/pytest 9.1.1,
-  including real Chromium and FFmpeg integration; Ruff format/lint, mypy over
-  43 source files, generated-schema parity, and the frontend production build
-  passed.
-- Dependency review: `pip-audit --skip-editable` and
-  `npm audit --omit=dev` reported no known vulnerabilities after raising the
-  pytest, pip, and setuptools release floors used by development/CI.
-- Real acceptance: the checked-in Todo DemoSpec produced a `PASSED` source run
-  and a `PASSED` recipe replay. Both manifests verified with no integrity
-  issues; replay preflight was `COMPATIBLE`; comparison was `UNCHANGED`.
-- Media acceptance: both source and replay videos probed as H.264/yuv420p,
-  1920x1080, 30 fps.
-- Repository hygiene: tracked-file and credential-pattern scans found no
-  generated runtime artifacts or common secret shapes.
+- 离线基准：`PASSED`；4/4 个代表性案例通过，终态结果准确率为 `1.0`、预期证据覆盖率为 `1.0`、轨迹完整性为 `1.0`。
+- 自动化验证：在 Python 3.12/pytest 9.1.1 下通过 133 个测试，其中包含真实 Chromium 和 FFmpeg 集成测试；Ruff 格式/检查、对 43 个源文件执行的 mypy、生成 schema 一致性以及前端生产构建全部通过。
+- 依赖审查：提高开发/CI 使用的 pytest、pip 和 setuptools 最低版本后，`pip-audit --skip-editable` 和 `npm audit --omit=dev` 均未发现已知漏洞。
+- 真实验收：仓库内置 Todo DemoSpec 生成了 `PASSED` 的源运行和 `PASSED` 的配方重放。两份清单验证均无完整性问题；重放预检为 `COMPATIBLE`；比较结果为 `UNCHANGED`。
+- 媒体验收：源视频和重放视频均探测为 H.264/yuv420p、1920x1080、30 fps。
+- 仓库卫生：对已跟踪文件和凭据模式的扫描未发现生成的运行时产物或常见密钥形式。

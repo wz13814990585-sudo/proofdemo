@@ -1,16 +1,12 @@
-# ProofDemo V1 Operations
+# ProofDemo V1 运维指南
 
-## Supported deployment shape
+## 支持的部署形态
 
-V1 is a local modular monolith: CLI for demo workflows, optional FastAPI health
-surface, Playwright Chromium, and local FFmpeg. It has no database, queue,
-background worker, user authentication, cloud artifact store, or hosted
-multi-tenant control plane. Add those only after measured workload requires them.
+V1 是本地模块化单体：使用 CLI 运行演示工作流，提供可选的 FastAPI 健康检查接口，并使用 Playwright Chromium 和本地 FFmpeg。它不包含数据库、队列、后台工作进程、用户认证、云产物存储或托管式多租户控制平面。只有实测工作负载表明确有需要时，才应增加这些能力。
 
-## Production configuration
+## 生产配置
 
-Use an isolated Python environment and pinned lock/constraints in the deployment
-system. Set:
+使用隔离的 Python 环境，并在部署系统中固定锁文件或约束。设置：
 
 ```text
 PROOFDEMO_ENVIRONMENT=production
@@ -19,50 +15,29 @@ PROOFDEMO_API_PORT=8000
 PROOFDEMO_FRONTEND_ORIGIN=https://your-frontend.example
 ```
 
-Terminate TLS at a maintained reverse proxy. Production rejects non-HTTPS or
-wildcard frontend origins, disables API docs, and sends HSTS/CSP plus defensive
-response headers. Provider keys remain process environment secrets; never put
-them in `.env` in a deployed environment, command history, specs, or artifacts.
+在持续维护的反向代理处终止 TLS。生产环境拒绝非 HTTPS 或通配符前端源站，禁用 API 文档，并发送 HSTS、CSP 及其他防御性响应头。提供方密钥应保留为进程环境中的秘密；在部署环境中绝不能将其写入 `.env`、命令历史、规范或产物。
 
-## Release procedure
+## 发布流程
 
-1. Run `proofdemo benchmark --output artifacts/benchmark_report.json`.
-2. Run pytest, Ruff format/lint, mypy, schema export drift check, and frontend
-   production build.
-3. Run `python -m pip_audit --skip-editable` and
-   `npm --prefix frontend audit --omit=dev`.
-4. Run the real Todo `run` then `replay` acceptance and verify both manifests.
-5. Review the diff for secrets and generated artifacts.
-6. Merge a reviewable PR; tag only the validated merge commit.
+1. 运行 `proofdemo benchmark --output artifacts/benchmark_report.json`。
+2. 运行 pytest、Ruff 格式/检查、mypy、schema 导出漂移检查和前端生产构建。
+3. 运行 `python -m pip_audit --skip-editable` 和 `npm --prefix frontend audit --omit=dev`。
+4. 执行真实 Todo 的 `run` 与 `replay` 验收，并验证两份清单。
+5. 检查 diff 中是否包含密钥和生成产物。
+6. 合并可审查的 PR；只给经过验证的合并提交打标签。
 
-CI performs the same automated gates with Chromium and FFmpeg.
+CI 使用 Chromium 和 FFmpeg 执行同样的自动化门禁。
 
-## Artifact handling and retention
+## 产物处理与保留
 
-Artifact directories may contain application screenshots, logs, downloads, and
-video. Store them on access-controlled encrypted storage. V1 has no automatic
-retention or deletion service: operators must define a retention period, remove
-expired directories with an approved recoverable process, and rotate any secret
-suspected of appearing in a recording. Keep the source recipe and manifest with
-retained videos so provenance remains inspectable.
+产物目录可能包含应用截图、日志、下载文件和视频。应将其存储在受访问控制的加密存储中。V1 不提供自动保留或删除服务：运维人员必须定义保留期限，通过经批准且可恢复的流程移除过期目录，并轮换任何疑似出现在录制中的密钥。保留视频时一并保留源配方和清单，以便继续检查来源。
 
-Back up only artifacts that policy requires. Test restoration by running
-`ArtifactWriter.verify` through application code or a replay preflight against a
-copy. A valid hash is not a substitute for access control.
+只备份策略要求保留的产物。应通过应用代码运行 `ArtifactWriter.verify`，或针对副本执行重放预检来测试恢复。有效哈希不能替代访问控制。
 
-## Incident response
+## 事件响应
 
-Stop active runs, preserve relevant manifests/logs, isolate affected artifacts,
-and revoke possibly exposed provider or application credentials. Determine
-whether leakage occurred in browser content, diagnostics, downloads, or video.
-Report security issues privately as described in `SECURITY.md`. Resume only
-after remediation and full release-gate validation.
+停止正在进行的运行，保留相关清单/日志，隔离受影响产物，并撤销可能暴露的提供方或应用凭据。确定泄露是否发生在浏览器内容、诊断信息、下载文件或视频中。按照 `SECURITY.md` 私密报告安全问题。只有在完成修复并通过全部发布门禁验证后才能恢复运行。
 
-## Capacity and failure semantics
+## 容量与失败语义
 
-Run directories are local and one CLI invocation is one foreground workflow.
-Scale by isolated processes only after measuring CPU, disk, browser memory, and
-FFmpeg time. Do not share an artifact directory between concurrent runs.
-`FAILED` means a deterministic requested outcome failed; `BLOCKED` means an
-external/runtime precondition prevented meaningful completion. Never retry by
-rewriting either result.
+运行目录位于本地，每次 CLI 调用都是一个前台工作流。只有在测量 CPU、磁盘、浏览器内存和 FFmpeg 耗时后，才通过隔离进程扩展。并发运行之间不得共享产物目录。`FAILED` 表示确定性的预期结果失败；`BLOCKED` 表示外部或运行时前置条件阻止了有意义的完成。绝不能通过重写结果来重试。
