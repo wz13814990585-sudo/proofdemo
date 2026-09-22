@@ -1,75 +1,63 @@
-# Current Stage — Stage 2: Assertions and Verified Scenes
+# Current Stage — Stage 3: Trace, Evidence Artifacts, and Browser Recording
 
 ## Goal
 
-Turn deterministic browser observations into explicit assertion evidence and
-honest scene outcomes. A run may become `PASSED` only after every scene has at
-least one assertion and every assertion passes.
+Persist what the deterministic executor and verifier actually did and observed.
+Produce a correlated immutable trace, automatic evidence screenshots, sanitized
+browser logs, browser video, and a hashed artifact manifest without changing
+Stage 2 verification semantics.
 
 ## Required Outcomes
 
-1. DemoSpec advances to schema version `1.2` and requires at least one
-   assertion per scene.
-2. The supported deterministic assertion set covers visible elements, text
-   content, exact normalized URL, completed downloads, and an opt-in
-   application-state hook.
-3. The application-owned `BrowserPort` exposes narrow observation methods;
-   Playwright types do not enter domain or application models.
-4. Every assertion result is keyed by `scene_id/assertion_id`, records
-   `PASSED`, `FAILED`, or `BLOCKED`, and contains its expected and observed
-   structured evidence when an observation is available.
-5. Every scene receives a `PASSED`, `FAILED`, or `BLOCKED` result. A failed
-   action fails its scene; unavailable infrastructure blocks the affected and
-   remaining scenes.
-6. All scenes passing transitions DemoRun from `RUNNING` through `EXECUTED` to
-   `PASSED`. No non-deterministic or model-produced statement can cause that
-   transition.
-7. A false assertion produces `FAILED`; an unavailable observation
-   precondition produces `BLOCKED`. Both include explicit reasons and never
-   become `PASSED`.
-8. `ExecutionReport` advances to version `2.0`, contains scene and assertion
-   results, and reports verification as `PASSED`, `FAILED`, `BLOCKED`, or
-   `NOT_RUN` without introducing the Stage 3 trace or artifact manifest.
-9. The Todo fixture and example spec exercise DOM, URL, download, and
-   application-state verification against real Chromium.
-10. Existing execution, configuration, API, schema, lint, type, and frontend
-    checks continue to pass.
-
-## Application-state Hook
-
-Supported applications may explicitly expose a JSON-compatible object as
-`window.__PROOFDEMO_STATE__`. An `app_state_equals` assertion reads one declared
-top-level key from that object and compares it by JSON value. The spec cannot
-provide JavaScript, expressions, or arbitrary property paths.
+1. A versioned `TraceEvent` model records a monotonic sequence, UTC timestamp,
+   event kind, stable scene/action/assertion correlation IDs, outcome, and
+   JSON-compatible non-sensitive data.
+2. The trace covers run transitions, action start/outcome, assertion outcome,
+   scene outcome, artifact capture outcome, and browser-session closure.
+3. Assertions with an available observation automatically receive a correlated
+   evidence screenshot after scene verification. Stage 1 explicitly requested
+   screenshots remain distinct execution artifacts.
+4. The Playwright adapter records the browser session to WebM and returns the
+   finalized recording path only after the browser context closes.
+5. Browser console and page-error entries are captured in order, bounded, and
+   sanitized before persistence.
+6. A focused artifact writer atomically persists `execution_report.json`,
+   `trace.jsonl`, `browser.log.jsonl`, and `artifact_manifest.json`.
+7. The manifest records every other persisted artifact's relative path, kind,
+   byte count, SHA-256 digest, and optional scene/assertion correlation. It
+   cannot self-hash or reference paths outside the requested artifact directory.
+8. `ExecutionReport` advances to version `3.0` and references trace, log,
+   manifest, evidence screenshot, requested screenshot, and video paths.
+9. Artifact capture failure is reported as an explicit warning and trace event;
+   it cannot fabricate or reverse assertion evidence or a verification result.
+10. Existing execution, verification, configuration, API, schema, lint, type,
+    and frontend checks continue to pass.
 
 ## Acceptance Criteria
 
-Given the local Todo fixture and `examples/demo_spec.json`, running:
+For the local Todo fixture, `proofdemo run` must still exit `0` and finish as
+`PASSED`, while additionally producing:
 
-```text
-proofdemo run examples/demo_spec.json --artifacts artifacts/todo-demo
-```
-
-must produce:
-
-- process exit code `0`;
-- a run status of `PASSED` with a legal `EXECUTED -> PASSED` transition;
-- a verification status of `PASSED`;
-- a `PASSED` scene result for `create_task`;
-- passing `text_contains`, `element_visible`, `url_equals`,
-  `download_completed`, and `app_state_equals` results;
-- structured expected and observed evidence correlated to every assertion;
-- the Stage 1 requested screenshot, without automatic evidence capture.
+- `execution_report.json`;
+- `trace.jsonl` with contiguous sequence numbers and correlated action,
+  assertion, scene, and run events;
+- `browser.log.jsonl`;
+- one requested screenshot and five correlated evidence screenshots;
+- `browser.webm` with non-zero size;
+- `artifact_manifest.json` whose sizes and SHA-256 digests match every listed
+  file.
 
 Automated tests must additionally prove that:
 
-- one false assertion yields a failed assertion, scene, run, and CLI exit;
-- observation infrastructure failure yields `BLOCKED` with a reason;
-- later scenes are marked `BLOCKED` after a prior failure or block;
-- an empty assertion list is rejected by DemoSpec validation;
-- download success requires a completed download with the expected filename;
-- the application-state assertion cannot execute arbitrary JavaScript;
-- browser resources still close after every success and failure path.
+- fill values are absent from action trace payloads and browser logs are
+  sanitized (the same non-sensitive text may legitimately appear as assertion
+  evidence);
+- evidence screenshot names cannot escape the artifact directory;
+- trace order remains valid on `PASSED`, `FAILED`, and `BLOCKED` paths;
+- a missing optional capture produces a warning without changing deterministic
+  assertion results;
+- manifest verification detects changed artifact bytes;
+- browser resources and video finalize on success and failure.
 
 The full validation suite remains:
 
@@ -83,13 +71,12 @@ npm --prefix frontend run build
 
 ## Not Included
 
-- full immutable trace events, automatic evidence screenshots, logs, browser
-  video, hashes, or an artifact manifest;
-- autonomous exploration, locator repair, retries, or model calls;
-- network-response assertions beyond completed browser downloads;
+- timeline editing, deterministic video composition, MP4 output, transitions,
+  captions, or overlays;
+- model planning, autonomous exploration, locator repair, or retries;
 - credentials, cross-origin workflows, destructive actions, or production
   authentication;
-- narration, TTS, video composition, recipe persistence, queues, or workers.
+- narration, TTS, DemoRecipe persistence, queues, workers, or cloud storage.
 
 ## Completion Status
 

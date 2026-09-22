@@ -86,6 +86,11 @@ def test_real_chromium_executes_example_and_captures_screenshot(
         "PASSED",
     ]
     assert (tmp_path / "task-created.png").stat().st_size > 0
+    assert len(report.evidence_screenshot_paths) == 5
+    assert all((tmp_path / path).stat().st_size > 0 for path in report.evidence_screenshot_paths)
+    assert report.browser_video_path == "browser.webm"
+    assert (tmp_path / "browser.webm").stat().st_size > 0
+    assert list(tmp_path.glob("*.webm")) == [tmp_path / "browser.webm"]
 
 
 def test_real_adapter_maps_every_typed_locator(todo_url: str) -> None:
@@ -141,3 +146,24 @@ def test_real_adapter_rejects_cross_origin_navigation(todo_url: str) -> None:
             browser.goto("https://example.com/", timeout_ms=1_000)
     finally:
         browser.close()
+
+
+def test_real_video_finalizes_after_action_failure(todo_url: str, tmp_path: Path) -> None:
+    raw: dict[str, Any] = json.loads(
+        (ROOT / "examples" / "demo_spec.json").read_text(encoding="utf-8")
+    )
+    raw["source_url"] = todo_url
+    raw["scenes"][0]["actions"][0]["url"] = todo_url
+    raw["scenes"][0]["actions"][2]["target"]["name"] = "Missing button"
+    raw["scenes"][0]["actions"][2]["timeout_ms"] = 100
+    url_assertion = next(
+        item for item in raw["scenes"][0]["assertions"] if item["type"] == "url_equals"
+    )
+    url_assertion["expected_url"] = todo_url
+    spec = DemoSpec.model_validate(raw)
+
+    report = ExecutionService(PlaywrightBrowser()).execute(spec, tmp_path)
+
+    assert report.run.status is DemoRunStatus.FAILED
+    assert report.browser_video_path == "browser.webm"
+    assert (tmp_path / "browser.webm").stat().st_size > 0

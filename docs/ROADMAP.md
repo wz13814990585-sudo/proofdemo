@@ -30,14 +30,14 @@ Evaluate explicit DOM, URL, download, and application-facing assertions. Give
 every scene a `PASSED`, `FAILED`, or `BLOCKED` outcome tied to evidence, and
 enable the verified run transition from `EXECUTED` to `PASSED`.
 
-## Stage 3 — Trace and Browser Recording (next)
+## Stage 3 — Trace and Browser Recording (complete)
 
 Persist the full structured action/observation trace, automatic evidence
 screenshots, logs, artifact metadata, and browser video without changing
 verification semantics. Stage 1's explicitly requested screenshots remain
 simple execution artifacts rather than the automatic capture system.
 
-## Stage 4 — Deterministic Video Composition
+## Stage 4 — Deterministic Video Composition (next)
 
 Transform verified traces and recordings into a repeatable timeline and basic
 1080p video with deterministic composition.
