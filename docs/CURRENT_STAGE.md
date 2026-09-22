@@ -1,63 +1,60 @@
-# Current Stage — Stage 6: Grounded Narration and TTS
+# Current Stage — Stage 7: Replayable DemoRecipe
 
 ## Goal
 
-Create an AI-voiced demo only from integrity-checked, verified scene evidence.
-Narration text remains deterministically grounded in passed assertions; a speech
-provider may synthesize that approved text but cannot create product claims.
+Persist a portable, non-sensitive recipe for each verified run and replay that
+recipe through the existing deterministic pipeline only after an explicit,
+machine-readable compatibility check.
 
 ## Required Outcomes
 
-1. Narration accepts only a `PASSED` execution bundle, a valid artifact
-   manifest, and the exact Stage 4 timeline and silent video recorded there.
-2. Every narration cue maps to one verified timeline scene and cites at least
-   one `PASSED` assertion ID from that scene.
-3. Spoken success claims are deterministic templates derived from assertion
-   evidence. No model is allowed to invent, rewrite, or expand product claims.
-4. The first cue contains a concise disclosure that the voice is AI-generated,
-   and `narration.json` records the disclosure and provider provenance.
-5. `SpeechPort` and `AudioMixPort` isolate synthesis and media mechanics from
-   evidence policy. Provider and FFmpeg SDK/process details stay in adapters.
-6. The OpenAI speech adapter requires explicit model and voice configuration,
-   requests WAV, atomically publishes output, and hides raw provider errors.
-7. Per-scene WAV files are probed before mixing. Speech may be accelerated only
-   within a bounded intelligibility limit; audio that cannot fit its verified
-   scene is rejected instead of truncated or moved to another scene.
-8. FFmpeg aligns cues to their scene ranges and produces `demo-narrated.mp4`
-   with the unchanged H.264 video stream and an AAC audio stream.
-9. `narration.json`, per-scene WAV files, and the narrated MP4 are integrity
-   recorded in the artifact manifest with scene/assertion correlation.
-10. `proofdemo run` remains fully usable without API credentials. Narration is
-    opt-in through explicit TTS model and voice settings.
-11. Tests use fake speech clients/ports and make no billable network requests;
-    a real local FFmpeg test verifies timing and audio/video stream properties.
-12. Existing planning, execution, verification, capture, render, lint, type,
-    and frontend checks continue to pass.
+1. `DemoRecipe` is a strict versioned model containing the canonical DemoSpec,
+   its SHA-256 fingerprint, fixed execution profile, compatibility requirements,
+   and source-run provenance.
+2. Recipe provenance references the verified execution report and final video
+   by their manifest hashes; it never contains credentials, environment values,
+   browser storage, API keys, or unredacted logs.
+3. Recipes are created only from `PASSED`, integrity-checked runs whose spec and
+   manifest identities agree.
+4. `demo_recipe.json` is atomically written and integrity-recorded in the final
+   artifact manifest for every successful standard run and replay.
+5. Compatibility checks are deterministic and report all unsupported recipe,
+   DemoSpec, report/manifest schema, engine version, and execution-profile
+   constraints before browser execution.
+6. `proofdemo replay RECIPE --artifacts ...` writes a versioned replay preflight
+   report. Incompatible or tampered recipes never start a browser.
+7. Compatible replay delegates to the existing execution, verification,
+   capture, render, and optional narration services; it does not create a
+   parallel executor.
+8. Replay artifacts record the source recipe ID/run and the compatibility
+   decision, then emit a new run ID and a new recipe with fresh provenance.
+9. Narration remains explicitly opt-in during replay; a recipe never silently
+   initiates a billable speech request.
+10. Tests cover round-trip stability, fingerprint tampering, incompatible
+    versions/profiles, source-manifest tampering, browser non-execution on
+    preflight failure, successful delegation, and provenance propagation.
+11. Existing planning, execution, verification, media, lint, type, and frontend
+    checks continue to pass.
 
 ## Acceptance Criteria
 
-For a verified fixture with sufficient scene duration, narration must produce a
-versioned evidence-linked script, one valid WAV per scene, and a 1920×1080,
-30-fps H.264/AAC MP4 whose duration remains within one frame of the silent
-video. A cue must begin inside its correlated scene and may not exceed that
-scene after bounded tempo adjustment.
+A verified Todo run must produce `demo_recipe.json` whose embedded DemoSpec
+round-trips without change and whose fingerprint and source artifact hashes are
+valid. Replaying it against the fixture must create a distinct `PASSED` run,
+retain the original source run in `replay_preflight.json`, and produce another
+valid recipe and artifact manifest.
 
-Tests must prove refusal of failed runs, tampered Stage 4 artifacts, missing or
-mismatched timeline scenes, ungrounded evidence references, overlong speech,
-missing provider configuration, provider failure, and accidental TTS use when
-the user did not opt in.
-
-Live speech generation is optional in local validation because it requires the
-user's `OPENAI_API_KEY`, account access, and explicit model/voice choices. The
-checked-in suite must never make a billable network request.
+Changing the embedded spec without updating its fingerprint, requiring an
+unsupported engine/schema/profile, or replaying a malformed recipe must produce
+an explicit incompatible/invalid result before Playwright is constructed.
 
 ## Not Included
 
-- model-written narration, captions, music, sound effects, transitions, zooms,
-  or visual editorial changes;
-- autonomous exploration, locator repair, scene repair, or reruns;
-- DemoRecipe persistence, change detection, partial rerender, queues, workers,
-  cloud media storage, or production provider routing.
+- UI change comparison, selector diagnosis, automated repair, scene repair, or
+  partial rerendering;
+- stored credentials, browser sessions, environment snapshots, provider keys,
+  queue/worker infrastructure, cloud storage, or scheduled replay;
+- guarantees that external application state is unchanged between runs.
 
 ## Completion Status
 

@@ -10,11 +10,12 @@ The product flow is:
 Intent -> Plan -> Execute -> Verify -> Capture -> Render
 ```
 
-This repository currently implements **Stage 6**: a bounded optional planner,
+This repository currently implements **Stage 7**: a bounded optional planner,
 deterministic execution and verification, correlated artifacts, 1080p video,
-and opt-in evidence-grounded narration. A model may propose a reviewable
-DemoSpec, but it cannot execute it or claim success; spoken product claims are
-fixed templates derived from passed assertions. See
+opt-in evidence-grounded narration, and compatibility-checked replay recipes. A
+model may propose a reviewable DemoSpec, but it cannot execute it or claim
+success; spoken product claims are fixed templates derived from passed
+assertions. See
 [the current stage](docs/CURRENT_STAGE.md) for the exact scope.
 
 ## Prerequisites
@@ -120,6 +121,18 @@ proofdemo run examples/demo_spec.json \
 Narration is never implied by configured credentials; `--narrate` is required.
 The first cue discloses that the voice is AI-generated.
 
+Every successful run also writes `demo_recipe.json`. Replay it into a new
+artifact directory with:
+
+```bash
+proofdemo replay artifacts/todo-demo/demo_recipe.json \
+  --artifacts artifacts/todo-demo-replay
+```
+
+`replay_preflight.json` records the recipe/source provenance and every
+compatibility issue before the browser starts. Replay narration remains opt-in
+with the same `--narrate`, `--tts-model`, and `--voice` flags.
+
 A successful Stage 4 run exits `0`, transitions through `EXECUTED` to `PASSED`,
 and writes `execution_report.json`, `trace.jsonl`, `browser.log.jsonl`,
 `browser.webm`, `timeline.json`, `demo.mp4`, `artifact_manifest.json`, the
@@ -127,6 +140,10 @@ requested screenshot, and correlated evidence screenshots. The final MP4 is
 H.264/yuv420p at 1920×1080 and 30 fps. `EXECUTED` continues to mean only that
 browser actions completed; only the deterministic verifier can produce
 `PASSED`, and only a verified integrity-checked run is composed.
+
+A successful run also writes `demo_recipe.json`, embedding the canonical
+DemoSpec plus its fingerprint, fixed execution profile, schema requirements,
+and hashes for the source execution report and final video.
 
 An opted-in narrated run additionally writes `narration.json`, one PCM WAV per
 scene, and `demo-narrated.mp4` with H.264 video and AAC audio. Every cue cites a
@@ -183,6 +200,9 @@ model.
   type. TTS synthesizes those phrases but cannot author or expand claims.
 - Speech that cannot fit its scene within the bounded tempo policy is rejected;
   it is not truncated, shifted, or allowed to cover another scene.
+- A recipe is portable input, not trusted execution authority. Replay validates
+  its spec fingerprint, versions, schemas, and execution profile first, then
+  delegates to the same deterministic pipeline and creates a fresh run ID.
 
 ## Repository map
 
@@ -211,8 +231,9 @@ non-sensitive literal fill data, constrains navigation to one origin, and does
 not inject browser credentials. The application-state assertion reads one
 validated top-level key and cannot execute spec-provided JavaScript. Fill
 values are omitted from action trace payloads, and browser diagnostic text is
-bounded and sanitized before persistence. Stage 6 reads provider credentials
+bounded and sanitized before persistence. Stage 7 reads provider credentials
 only from the environment and never stores them in planner inputs, candidates,
 traces, narration text, or artifacts. TTS receives only non-sensitive grounded
-phrases, and artifact metadata records the AI voice disclosure. Destructive-
+phrases, and artifact metadata records the AI voice disclosure. Recipes contain
+no environment snapshot, cookies, storage state, or credentials. Destructive-
 action safeguards remain a later-stage requirement.

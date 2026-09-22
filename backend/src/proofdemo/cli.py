@@ -16,15 +16,21 @@ from proofdemo.adapters.ffmpeg_render import FFmpegRenderAdapter
 from proofdemo.adapters.openai_planner import OpenAIPlanner
 from proofdemo.adapters.openai_speech import OpenAISpeechAdapter
 from proofdemo.adapters.playwright_browser import PlaywrightBrowser
-from proofdemo.application.artifacts import ArtifactWriteError, ArtifactWriter
+from proofdemo.application.artifacts import ArtifactDeclaration, ArtifactWriteError, ArtifactWriter
 from proofdemo.application.execution import ExecutionService
 from proofdemo.application.narration import NarrationRefusedError, NarrationService
 from proofdemo.application.planning import InvalidPlannerCandidate, PlanningService
+from proofdemo.application.recipes import (
+    CompatibilityStatus,
+    RecipeRefusedError,
+    RecipeService,
+)
 from proofdemo.application.rendering import CompositionRefusedError, CompositionService
 from proofdemo.config import Settings
 from proofdemo.domain.demo_run import DemoRunStatus
 from proofdemo.domain.demo_spec import DemoSpec
 from proofdemo.domain.planning import DemoIntent
+from proofdemo.domain.recipe import DemoRecipe
 from proofdemo.ports.audio import AudioMixError, AudioUnavailableError
 from proofdemo.ports.planner import PlannerResponseError, PlannerUnavailableError
 from proofdemo.ports.render import RenderFailedError, RenderUnavailableError
@@ -45,6 +51,12 @@ def _parser() -> argparse.ArgumentParser:
     run.add_argument("--narrate", action="store_true", help="add evidence-grounded AI speech")
     run.add_argument("--tts-model", help="explicit OpenAI speech model; overrides environment")
     run.add_argument("--voice", help="explicit OpenAI speech voice; overrides environment")
+    replay = commands.add_parser("replay", help="compatibility-check and replay a DemoRecipe")
+    replay.add_argument("recipe", type=Path, help="path to demo_recipe.json")
+    replay.add_argument("--artifacts", required=True, type=Path, help="new artifact directory")
+    replay.add_argument("--narrate", action="store_true", help="add evidence-grounded AI speech")
+    replay.add_argument("--tts-model", help="explicit OpenAI speech model; overrides environment")
+    replay.add_argument("--voice", help="explicit OpenAI speech voice; overrides environment")
     plan = commands.add_parser("plan", help="create a reviewable DemoSpec candidate")
     plan.add_argument("source_url", help="same-origin application URL")
     plan.add_argument("--goal", required=True, help="natural-language demo goal")
@@ -61,7 +73,12 @@ def _load_spec(path: Path) -> DemoSpec:
     return DemoSpec.model_validate(raw)
 
 
-def _run_spec(args: argparse.Namespace) -> int:
+def _execute_spec(
+    spec: DemoSpec,
+    args: argparse.Namespace,
+    *,
+    base_artifacts: tuple[ArtifactDeclaration, ...] = (),
+) -> int:
     if not args.narrate and (args.tts_model or args.voice):
         print("Invalid narration options: --tts-model/--voice require --narrate", file=sys.stderr)
         return EXIT_INVALID_INPUT
@@ -76,16 +93,15 @@ def _run_spec(args: argparse.Namespace) -> int:
         return EXIT_BLOCKED
 
     try:
-        spec = _load_spec(args.spec)
-    except (OSError, json.JSONDecodeError, ValidationError) as error:
-        print(f"Invalid DemoSpec: {error}", file=sys.stderr)
-        return EXIT_INVALID_INPUT
-
-    try:
         args.artifacts.mkdir(parents=True, exist_ok=True)
         bundle = ExecutionService(PlaywrightBrowser()).execute_bundle(spec, args.artifacts)
         writer = ArtifactWriter()
-        manifest = writer.persist(bundle, args.artifacts)
+        declarations = list(base_artifacts)
+        manifest = writer.persist(
+            bundle,
+            args.artifacts,
+            extra_artifacts=declarations,
+        )
         report = bundle.report
         if report.run.status is DemoRunStatus.PASSED:
             composition = CompositionService(FFmpegRenderAdapter()).compose(
@@ -93,21 +109,26 @@ def _run_spec(args: argparse.Namespace) -> int:
                 manifest,
                 args.artifacts,
             )
+            declarations.extend(composition.declarations)
             manifest = writer.persist(
                 bundle,
                 args.artifacts,
-                extra_artifacts=composition.declarations,
+                extra_artifacts=declarations,
             )
             if args.narrate:
                 narration = NarrationService(
                     OpenAISpeechAdapter(tts_model or "", tts_voice or ""),
                     FFmpegAudioMixAdapter(),
                 ).narrate(bundle, manifest, composition.timeline, args.artifacts)
-                writer.persist(
+                declarations.extend(narration.declarations)
+                manifest = writer.persist(
                     bundle,
                     args.artifacts,
-                    extra_artifacts=composition.declarations + narration.declarations,
+                    extra_artifacts=declarations,
                 )
+            recipe = RecipeService().create(spec, bundle, manifest, args.artifacts)
+            declarations.append(recipe.declaration)
+            writer.persist(bundle, args.artifacts, extra_artifacts=declarations)
         report_path = args.artifacts / "execution_report.json"
     except (ArtifactWriteError, OSError) as error:
         print(f"Could not write artifacts: {error}", file=sys.stderr)
@@ -124,6 +145,9 @@ def _run_spec(args: argparse.Namespace) -> int:
     except (SpeechSynthesisError, AudioMixError, NarrationRefusedError) as error:
         print(f"Narration failed: {error}", file=sys.stderr)
         return EXIT_BLOCKED
+    except RecipeRefusedError as error:
+        print(f"Recipe failed: {error}", file=sys.stderr)
+        return EXIT_BLOCKED
 
     print(f"{report.run.status}: {report_path}")
     if report.run.status in {DemoRunStatus.EXECUTED, DemoRunStatus.PASSED}:
@@ -131,6 +155,37 @@ def _run_spec(args: argparse.Namespace) -> int:
     if report.run.status is DemoRunStatus.FAILED:
         return EXIT_FAILED
     return EXIT_BLOCKED
+
+
+def _run_spec(args: argparse.Namespace) -> int:
+    try:
+        spec = _load_spec(args.spec)
+    except (OSError, json.JSONDecodeError, ValidationError) as error:
+        print(f"Invalid DemoSpec: {error}", file=sys.stderr)
+        return EXIT_INVALID_INPUT
+    return _execute_spec(spec, args)
+
+
+def _replay_recipe(args: argparse.Namespace) -> int:
+    try:
+        if (args.artifacts.resolve() / RecipeService.RECIPE_PATH) == args.recipe.resolve():
+            print("Replay output must not overwrite its source recipe", file=sys.stderr)
+            return EXIT_INVALID_INPUT
+        recipe = DemoRecipe.model_validate_json(args.recipe.read_text(encoding="utf-8"))
+        service = RecipeService()
+        preflight = service.compatibility(recipe)
+        args.artifacts.mkdir(parents=True, exist_ok=True)
+        declaration = service.write_preflight(preflight, args.artifacts)
+    except (OSError, ValidationError) as error:
+        print(f"Invalid DemoRecipe: {error}", file=sys.stderr)
+        return EXIT_INVALID_INPUT
+    if preflight.status is CompatibilityStatus.INCOMPATIBLE:
+        print(
+            f"INCOMPATIBLE: {args.artifacts / RecipeService.PREFLIGHT_PATH}",
+            file=sys.stderr,
+        )
+        return EXIT_INVALID_INPUT
+    return _execute_spec(recipe.spec, args, base_artifacts=(declaration,))
 
 
 def _write_candidate(spec: DemoSpec, output: Path) -> None:
@@ -191,6 +246,8 @@ def run(argv: Sequence[str] | None = None) -> int:
         return _run_spec(args)
     if args.command == "plan":
         return _plan_spec(args)
+    if args.command == "replay":
+        return _replay_recipe(args)
     return EXIT_INVALID_INPUT
 
 

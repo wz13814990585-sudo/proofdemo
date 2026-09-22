@@ -9,8 +9,10 @@ from proofdemo.domain.demo_run import (
     transition_demo_run,
 )
 from proofdemo.domain.demo_spec import DemoSpec
+from proofdemo.domain.recipe import DemoRecipe
 
 __all__ = [
+    "DemoRecipe",
     "DemoRun",
     "DemoRunStatus",
     "DemoSpec",

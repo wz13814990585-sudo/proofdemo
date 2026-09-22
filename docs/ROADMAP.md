@@ -52,12 +52,12 @@ DemoSpec that the existing deterministic pipeline can validate and execute.
 Generate narration constrained by verified events, synthesize speech, and align
 audio to scene timing without inventing success claims.
 
-## Stage 7 — Replayable DemoRecipe (next)
+## Stage 7 — Replayable DemoRecipe (complete)
 
 Persist stable inputs and execution metadata, then replay a recipe with clear
 compatibility and provenance reporting.
 
-## Stage 8 — UI Change Detection
+## Stage 8 — UI Change Detection (next)
 
 Compare replay observations with prior successful evidence and identify broken
 selectors, assertions, or scene assumptions.

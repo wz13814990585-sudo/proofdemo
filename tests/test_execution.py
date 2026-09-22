@@ -23,6 +23,12 @@ from proofdemo.application.narration import (
     NarrationService,
     validate_narration_grounding,
 )
+from proofdemo.application.recipes import (
+    EXECUTION_PROFILE,
+    CompatibilityStatus,
+    RecipeRefusedError,
+    RecipeService,
+)
 from proofdemo.application.rendering import (
     CompositionRefusedError,
     CompositionService,
@@ -34,6 +40,7 @@ from proofdemo.application.verification import OutcomeStatus, VerificationStatus
 from proofdemo.cli import EXIT_BLOCKED, EXIT_EXECUTED, EXIT_FAILED, run
 from proofdemo.domain.demo_run import DemoRunStatus
 from proofdemo.domain.demo_spec import DemoSpec, ElementTarget
+from proofdemo.domain.recipe import DemoRecipe, demo_spec_sha256
 from proofdemo.ports.audio import AudioInfo, AudioMixCue
 from proofdemo.ports.browser import (
     AppStateObservation,
@@ -549,6 +556,8 @@ def test_artifact_writer_hashes_and_verifies_every_declared_file(tmp_path: Path)
         ArtifactKind.NARRATION_TRACK,
         ArtifactKind.NARRATION_AUDIO,
         ArtifactKind.NARRATED_VIDEO,
+        ArtifactKind.DEMO_RECIPE,
+        ArtifactKind.REPLAY_PREFLIGHT,
     }
     assert len(manifest.artifacts) == 10
     assert all(len(record.sha256) == 64 for record in manifest.artifacts)
@@ -776,6 +785,153 @@ def test_narration_refuses_failed_run_before_calling_speech(tmp_path: Path) -> N
         )
 
     assert speech.calls == []
+
+
+def test_recipe_round_trips_spec_and_verified_provenance(tmp_path: Path) -> None:
+    spec = DemoSpec.model_validate(load_example())
+    bundle, manifest, composition = stage4_fixture(tmp_path)
+
+    result = RecipeService().create(spec, bundle, manifest, tmp_path)
+    final_manifest = ArtifactWriter().persist(
+        bundle,
+        tmp_path,
+        extra_artifacts=(*composition.declarations, result.declaration),
+    )
+    loaded = DemoRecipe.model_validate_json(
+        (tmp_path / "demo_recipe.json").read_text(encoding="utf-8")
+    )
+
+    assert loaded == result.recipe
+    assert loaded.spec == spec
+    assert loaded.spec_sha256 == demo_spec_sha256(spec)
+    assert str(loaded.provenance.source_run_id) == str(bundle.report.run.id)
+    assert loaded.provenance.execution_report.path == "execution_report.json"
+    assert loaded.provenance.final_video.path == "demo.mp4"
+    assert (
+        next(
+            record.sha256
+            for record in manifest.artifacts
+            if record.kind is ArtifactKind.EXECUTION_REPORT
+        )
+        == loaded.provenance.execution_report.sha256
+    )
+    assert ArtifactKind.DEMO_RECIPE in {record.kind for record in final_manifest.artifacts}
+    assert ArtifactWriter.verify(tmp_path, final_manifest) == ()
+
+
+def test_recipe_creation_rejects_tampered_source_manifest(tmp_path: Path) -> None:
+    spec = DemoSpec.model_validate(load_example())
+    bundle, manifest, _ = stage4_fixture(tmp_path)
+    (tmp_path / "demo.mp4").write_bytes(b"tampered")
+
+    with pytest.raises(RecipeRefusedError, match="integrity check failed"):
+        RecipeService().create(spec, bundle, manifest, tmp_path)
+
+
+def test_recipe_compatibility_reports_all_contract_mismatches(tmp_path: Path) -> None:
+    spec = DemoSpec.model_validate(load_example())
+    bundle, manifest, _ = stage4_fixture(tmp_path)
+    recipe = RecipeService().create(spec, bundle, manifest, tmp_path).recipe
+    changed_spec = recipe.spec.model_copy(update={"goal": "Changed without a new fingerprint"})
+    incompatible = recipe.model_copy(
+        update={
+            "schema_version": "2.0",
+            "spec": changed_spec,
+            "requirements": recipe.requirements.model_copy(
+                update={
+                    "minimum_proofdemo_version": "99.0.0",
+                    "demo_spec_schema": "9.0",
+                    "execution_report_schema": "9.0",
+                    "artifact_manifest_schema": "9.0",
+                }
+            ),
+            "execution_profile": EXECUTION_PROFILE.model_copy(update={"locale": "fr-FR"}),
+        }
+    )
+
+    preflight = RecipeService.compatibility(incompatible)
+
+    assert preflight.status is CompatibilityStatus.INCOMPATIBLE
+    assert {issue.code for issue in preflight.issues} == {
+        "RECIPE_SCHEMA_UNSUPPORTED",
+        "DEMOSPEC_SCHEMA_UNSUPPORTED",
+        "REPORT_SCHEMA_UNSUPPORTED",
+        "MANIFEST_SCHEMA_UNSUPPORTED",
+        "ENGINE_VERSION_UNSUPPORTED",
+        "EXECUTION_PROFILE_UNSUPPORTED",
+        "SPEC_FINGERPRINT_MISMATCH",
+    }
+
+
+def test_cli_incompatible_replay_never_starts_browser(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    spec = DemoSpec.model_validate(load_example())
+    bundle, manifest, _ = stage4_fixture(source_dir)
+    recipe = RecipeService().create(spec, bundle, manifest, source_dir).recipe
+    changed = recipe.model_copy(update={"spec_sha256": "0" * 64})
+    recipe_path = source_dir / "tampered-recipe.json"
+    recipe_path.write_text(changed.model_dump_json(), encoding="utf-8")
+    monkeypatch.setattr(
+        "proofdemo.cli.PlaywrightBrowser",
+        lambda: (_ for _ in ()).throw(AssertionError("browser must not start")),
+    )
+    replay_dir = tmp_path / "replay"
+
+    exit_code = run(["replay", str(recipe_path), "--artifacts", str(replay_dir)])
+    preflight = json.loads((replay_dir / "replay_preflight.json").read_text(encoding="utf-8"))
+
+    assert exit_code == 64
+    assert preflight["status"] == "INCOMPATIBLE"
+    assert preflight["issues"][0]["code"] == "SPEC_FINGERPRINT_MISMATCH"
+    assert not (replay_dir / "execution_report.json").exists()
+
+
+def test_cli_replay_delegates_to_pipeline_and_emits_fresh_provenance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec_path = tmp_path / "spec.json"
+    spec_path.write_text(json.dumps(load_example()), encoding="utf-8")
+    source_dir = tmp_path / "source"
+    replay_dir = tmp_path / "replay"
+    monkeypatch.setattr("proofdemo.cli.PlaywrightBrowser", FakeBrowser)
+    monkeypatch.setattr("proofdemo.cli.FFmpegRenderAdapter", FakeRenderer)
+
+    first_exit = run(["run", str(spec_path), "--artifacts", str(source_dir)])
+    source_recipe = DemoRecipe.model_validate_json(
+        (source_dir / "demo_recipe.json").read_text(encoding="utf-8")
+    )
+    replay_exit = run(
+        [
+            "replay",
+            str(source_dir / "demo_recipe.json"),
+            "--artifacts",
+            str(replay_dir),
+        ]
+    )
+    replay_report = json.loads((replay_dir / "execution_report.json").read_text(encoding="utf-8"))
+    preflight = json.loads((replay_dir / "replay_preflight.json").read_text(encoding="utf-8"))
+    replay_recipe = DemoRecipe.model_validate_json(
+        (replay_dir / "demo_recipe.json").read_text(encoding="utf-8")
+    )
+    replay_manifest = json.loads(
+        (replay_dir / "artifact_manifest.json").read_text(encoding="utf-8")
+    )
+
+    assert first_exit == EXIT_EXECUTED
+    assert replay_exit == EXIT_EXECUTED
+    assert preflight["status"] == "COMPATIBLE"
+    assert preflight["source_run_id"] == str(source_recipe.provenance.source_run_id)
+    assert replay_report["run"]["status"] == "PASSED"
+    assert replay_report["run"]["id"] != str(source_recipe.provenance.source_run_id)
+    assert str(replay_recipe.provenance.source_run_id) == replay_report["run"]["id"]
+    assert {record["kind"] for record in replay_manifest["artifacts"]}.issuperset(
+        {"REPLAY_PREFLIGHT", "DEMO_RECIPE", "FINAL_VIDEO"}
+    )
 
 
 def test_safe_artifact_path_rejects_traversal(tmp_path: Path) -> None:
