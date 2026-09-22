@@ -1,77 +1,53 @@
-# ProofDemo Roadmap
+# ProofDemo 路线图
 
-The roadmap controls sequence, not detailed implementation. Only the stage in
-`CURRENT_STAGE.md` is authorized for implementation.
+路线图控制阶段顺序，而不是具体实现细节。只有 `CURRENT_STAGE.md` 中的阶段获得实施授权。
 
-## Stage 0 — Foundation (complete)
+## Stage 0 — 基础（已完成）
 
-Create the repository, product and architecture documentation, API/frontend
-shells, authoritative DemoSpec models and schema, deterministic DemoRun
-lifecycle, test infrastructure, and local setup.
+创建仓库、产品与架构文档、API/前端骨架、权威 DemoSpec 模型与 schema、确定性的 DemoRun 生命周期、测试基础设施和本地开发环境。
 
-## Stage 0.1 — Execution Contract Hardening (complete)
+## Stage 0.1 — 执行契约强化（已完成）
 
-Separate execution from verification, stabilize DemoSpec identities and typed
-targets, require timezone-aware run history, make local configuration truthful,
-and clarify artifact ownership before a browser runtime consumes the contracts.
+分离执行与验证，稳定 DemoSpec 标识和类型化目标，要求运行历史包含时区，使本地配置真实可信，并在浏览器运行时使用契约前明确产物所有权。
 
-## Stage 1 — Deterministic Browser Execution (complete)
+## Stage 1 — 确定性浏览器执行（已完成）
 
-Execute a manually authored DemoSpec with a Playwright adapter. Begin with
-same-origin navigation, click, fill with non-sensitive demonstration data,
-bounded pause, and explicitly requested screenshot actions against a separate
-local test application. Return a lightweight execution report and finish the
-run as `EXECUTED`; do not claim verification. No model planning or autonomous
-recovery.
+使用 Playwright 适配器执行手工编写的 DemoSpec。初始支持同源导航、点击、使用非敏感演示数据填充、有界暂停，以及针对独立本地测试应用明确要求的截图操作。返回轻量执行报告并以 `EXECUTED` 状态结束运行；不得声称已通过验证。不进行模型规划或自主恢复。
 
-## Stage 2 — Assertions and Verified Scenes (complete)
+## Stage 2 — 断言与已验证场景（已完成）
 
-Evaluate explicit DOM, URL, download, and application-facing assertions. Give
-every scene a `PASSED`, `FAILED`, or `BLOCKED` outcome tied to evidence, and
-enable the verified run transition from `EXECUTED` to `PASSED`.
+评估明确的 DOM、URL、下载和面向应用的断言。根据证据为每个场景给出 `PASSED`、`FAILED` 或 `BLOCKED` 结果，并允许经过验证的运行从 `EXECUTED` 转换为 `PASSED`。
 
-## Stage 3 — Trace and Browser Recording (complete)
+## Stage 3 — 轨迹与浏览器录制（已完成）
 
-Persist the full structured action/observation trace, automatic evidence
-screenshots, logs, artifact metadata, and browser video without changing
-verification semantics. Stage 1's explicitly requested screenshots remain
-simple execution artifacts rather than the automatic capture system.
+持久化完整的结构化操作/观察轨迹、自动证据截图、日志、产物元数据和浏览器视频，同时不改变验证语义。Stage 1 中明确要求的截图仍是简单执行产物，而不是自动采集系统的一部分。
 
-## Stage 4 — Deterministic Video Composition (complete)
+## Stage 4 — 确定性视频合成（已完成）
 
-Transform verified traces and recordings into a repeatable timeline and basic
-1080p video with deterministic composition.
+将经过验证的轨迹和录制转换为可重复的时间线，并通过确定性合成生成基础 1080p 视频。
 
-## Stage 5 — Demo Planner (complete)
+## Stage 5 — 演示规划器（已完成）
 
-Use a bounded model call to turn natural-language intent into a reviewable
-DemoSpec that the existing deterministic pipeline can validate and execute.
+使用一次有界模型调用，将自然语言意图转换为可审查的 DemoSpec，再由已有确定性管线进行验证和执行。
 
-## Stage 6 — Narration and TTS (complete)
+## Stage 6 — 旁白与 TTS（已完成）
 
-Generate narration constrained by verified events, synthesize speech, and align
-audio to scene timing without inventing success claims.
+生成受已验证事件约束的旁白，合成语音，并将音频与场景时间对齐，不得捏造成功声明。
 
-## Stage 7 — Replayable DemoRecipe (complete)
+## Stage 7 — 可重放 DemoRecipe（已完成）
 
-Persist stable inputs and execution metadata, then replay a recipe with clear
-compatibility and provenance reporting.
+持久化稳定输入和执行元数据，再通过清晰的兼容性与来源报告重放配方。
 
-## Stage 8 — UI Change Detection (complete)
+## Stage 8 — UI 变化检测（已完成）
 
-Compare replay observations with prior successful evidence and identify broken
-selectors, assertions, or scene assumptions.
+将重放观察结果与此前成功证据比较，识别失效的选择器、断言或场景假设。
 
-## Stage 9 — Scene Repair and Partial Rerender (complete)
+## Stage 9 — 场景修复与局部重新渲染（已完成）
 
-Propose bounded scene repairs, require appropriate verification, and rerender
-only invalidated portions of a demo.
+提出有界的场景修复，要求适当验证，并且只重新渲染失效的演示部分。
 
-## Stage 10 — Benchmarks and Production Hardening (complete)
+## Stage 10 — 基准评估与生产强化（已完成）
 
-Create representative evaluation fixtures, measure execution and verification
-quality, harden security and operations, and add production infrastructure only
-where measurements justify it.
+创建具有代表性的评估 fixture，衡量执行与验证质量，强化安全和运维；只有在测量结果证明有必要时才增加生产基础设施。
 
-ProofDemo V1 is complete at Stage 10. Later work must begin with a new scoped
-stage and acceptance criteria; the roadmap does not implicitly authorize it.
+ProofDemo V1 在 Stage 10 完成。后续工作必须先定义新的范围明确的阶段和验收标准；路线图不会隐式授权后续实现。

@@ -1,41 +1,28 @@
-# ProofDemo V1 Threat Model
+# ProofDemo V1 威胁模型
 
-## Assets and trust boundaries
+## 资产与信任边界
 
-Protected assets are user application data, credentials, DemoSpecs/recipes,
-browser recordings, assertion evidence, provider keys, and final videos. Trust
-boundaries exist at natural-language/provider calls, DemoSpec/recipe files, the
-target web origin, Playwright, FFmpeg, artifact directories, and the local API.
+受保护资产包括用户应用数据、凭据、DemoSpec/配方、浏览器录制、断言证据、提供方密钥和最终视频。信任边界存在于自然语言/提供方调用、DemoSpec/配方文件、目标 Web 源站、Playwright、FFmpeg、产物目录和本地 API 之间。
 
-Provider output is untrusted proposal data. DemoSpecs, repair candidates,
-recipes, manifests, persisted reports, and media metadata are revalidated before
-use. LLM text is never proof of execution or verification.
+提供方输出是不可信的提议数据。DemoSpec、修复候选、配方、清单、持久化报告和媒体元数据在使用前都会重新验证。LLM 文本绝不能作为执行或验证的证明。
 
-## Primary threats and controls
+## 主要威胁与控制
 
-| Threat | V1 control |
+| 威胁 | V1 控制措施 |
 | --- | --- |
-| Cross-origin navigation or credential URL | strict HTTP origin validation in domain and browser adapter |
-| Secret capture in fill traces/logs | credential-free contract, pre-execution fill policy, omitted fill payloads, diagnostic redaction |
-| Destructive or financial click | semantic marker detection and fresh `--allow-risky-actions` approval per run/replay/repair |
-| Provider prompt/output abuse | strict structured models, no tools, no persistence, explicit models, deterministic revalidation |
-| False success claim | independent assertions, evidence, terminal `PASSED` gate, grounded narration |
-| Path traversal or artifact replacement | contained resolved paths, atomic writes, byte count and SHA-256 manifest checks |
-| Recipe/baseline tampering | semantic spec fingerprint, schema/profile preflight, provenance hashes |
-| Media command injection | shell-free argument arrays, bounded timeouts, fixed codecs/filters |
-| Resource exhaustion | bounded model fields, scene/action/assertion counts, pause budget, process timeouts, CI timeout |
-| Browser diagnostic leakage | bounded redaction before persistence; provider keys stay in environment |
+| 跨源导航或带凭据的 URL | 在领域层和浏览器适配器中执行严格的 HTTP 源站验证 |
+| 填充轨迹/日志捕获密钥 | 无凭据契约、执行前填充策略、省略填充载荷、诊断信息脱敏 |
+| 破坏性或金融点击 | 语义标记检测；每次运行/重放/修复都需要新的 `--allow-risky-actions` 批准 |
+| 提供方提示词/输出滥用 | 严格结构化模型、无工具、无持久化、显式模型、确定性重新验证 |
+| 虚假成功声明 | 独立断言、证据、终态 `PASSED` 门禁、基于证据的旁白 |
+| 路径遍历或产物替换 | 受限的解析路径、原子写入、字节数与 SHA-256 清单检查 |
+| 配方/基线篡改 | 规范语义指纹、schema/profile 预检、来源哈希 |
+| 媒体命令注入 | 不使用 shell 的参数数组、有界超时、固定编解码器/滤镜 |
+| 资源耗尽 | 有界模型字段、场景/操作/断言数量、暂停预算、进程超时、CI 超时 |
+| 浏览器诊断泄露 | 持久化前进行有界脱敏；提供方密钥只保留在环境中 |
 
-## Residual risks
+## 剩余风险
 
-V1 runs locally and does not supply authentication, a credential vault, tenant
-isolation, sandboxed untrusted websites, malware scanning, or a retention
-service. Semantic click screening cannot prove the effect of opaque or misleading
-application labels. CSS and application behavior still require human DemoSpec
-review. SHA-256 proves local byte consistency, not trusted authorship. External
-application state can change between baseline and replay. OpenAI and target-site
-availability remain external dependencies for opted-in features.
+V1 在本地运行，不提供认证、凭据保管库、租户隔离、不可信网站沙箱、恶意软件扫描或保留服务。语义点击筛查无法证明不透明或误导性应用标签背后的真实效果。CSS 和应用行为仍需人工审查 DemoSpec。SHA-256 只能证明本地字节一致性，不能证明可信作者身份。外部应用状态可能在基线与重放之间发生变化。OpenAI 与目标网站的可用性仍是按需启用功能的外部依赖。
 
-Run only against applications and data the operator is authorized to access.
-Use a dedicated OS account/container and non-production fixture data for
-untrusted targets.
+只针对操作人员获授权访问的应用和数据运行。处理不可信目标时，应使用专用操作系统账户/容器及非生产 fixture 数据。

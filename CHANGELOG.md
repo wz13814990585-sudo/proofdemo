@@ -1,13 +1,9 @@
-# Changelog
+# 变更日志
 
 ## 1.0.0
 
-- Added strict DemoSpec contracts and deterministic DemoRun lifecycle.
-- Added Playwright execution, independent evidence-backed verification, traces,
-  screenshots, logs, downloads, browser video, and integrity manifests.
-- Added deterministic 1080p H.264 composition and evidence-grounded opt-in TTS.
-- Added bounded planning, replayable recipes, compatibility preflight, UI change
-  detection, review-required target repair, and verified partial scene render.
-- Added offline quality benchmarks, execution safety review, resource budgets,
-  production configuration validation, security headers, CI, and operations
-  documentation.
+- 新增严格的 DemoSpec 契约和确定性的 DemoRun 生命周期。
+- 新增 Playwright 执行、独立且有证据支持的验证、轨迹、截图、日志、下载、浏览器视频及完整性清单。
+- 新增确定性的 1080p H.264 合成，以及基于证据、按需启用的 TTS。
+- 新增有界规划、可重放配方、兼容性预检、UI 变化检测、需审核的目标修复，以及经过验证的场景局部渲染。
+- 新增离线质量基准、执行安全审查、资源预算、生产配置验证、安全响应头、CI 和运维文档。

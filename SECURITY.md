@@ -1,29 +1,20 @@
-# ProofDemo Security Policy
+# ProofDemo 安全策略
 
-## Reporting a vulnerability
+## 报告漏洞
 
-Do not open a public issue for a suspected vulnerability or exposed secret.
-Use GitHub's private **Report a vulnerability** flow for this repository. Include
-the affected commit, reproduction steps, impact, and whether any credential or
-recording may have been exposed. Do not include live credentials in the report.
+如果怀疑存在漏洞或密钥泄露，请勿创建公开 Issue。请使用本仓库在 GitHub 上的私密 **Report a vulnerability** 流程。报告中应包含受影响的提交、复现步骤、影响，以及是否可能已有凭据或录制内容泄露。不要在报告中包含仍然有效的凭据。
 
-## Supported version
+## 支持的版本
 
-V1 (`1.x`) on `main` is the supported line. Security fixes are made on a branch,
-validated with the complete release gates, and merged through a pull request.
+`main` 分支上的 V1（`1.x`）是当前受支持版本。安全修复应在独立分支完成，通过全部发布门禁验证后，再通过 Pull Request 合并。
 
-## Security invariants
+## 安全不变量
 
-- DemoSpec, DemoRecipe, prompts, traces, logs, narration, and artifacts must not
-  contain credentials.
-- Navigation remains on the validated source origin.
-- Credential-like fills are blocked. Named destructive, financial, account, and
-  production actions require fresh explicit approval on every execution.
-- A provider can propose only structured planning or repair output; it cannot
-  control the browser, verifier, artifact integrity, or run status.
-- A successful claim requires deterministic assertion evidence.
-- Artifact paths stay inside their run directory and manifests bind bytes with
-  SHA-256.
+- DemoSpec、DemoRecipe、提示词、轨迹、日志、旁白和产物不得包含凭据。
+- 导航必须始终停留在已验证的源站同源范围内。
+- 类似凭据的填充操作会被阻止。具名的破坏性、金融、账户和生产环境操作在每次执行时都需要重新明确批准。
+- 提供方只能提出结构化的规划或修复输出；不能控制浏览器、验证器、产物完整性或运行状态。
+- 任何成功声明都需要确定性的断言证据。
+- 产物路径必须位于其运行目录内，清单通过 SHA-256 与实际字节绑定。
 
-See [the threat model](docs/THREAT_MODEL.md) and
-[operations guide](docs/OPERATIONS.md) for controls and residual risks.
+控制措施和剩余风险请参阅[威胁模型](docs/THREAT_MODEL.md)和[运维指南](docs/OPERATIONS.md)。

@@ -1,107 +1,91 @@
-# ProofDemo Product Specification
+# ProofDemo 产品规格
 
-## Vision
+## 愿景
 
-Turn a product URL and natural-language demo intent into a verified,
-replayable, polished product demo.
+将产品 URL 和自然语言演示意图转换为经过验证、可重放且完成度高的产品演示。
 
-ProofDemo's defining property is verification. It must not present polished
-footage that claims a capability succeeded when the real workflow could not be
-verified.
+ProofDemo 的核心特征是验证。当真实工作流无法被验证时，它绝不能呈现声称某项能力已经成功的精美视频。
 
-## Users and Inputs
+## 用户与输入
 
-The initial user is a product, growth, sales, or developer team member who can
-provide:
+初始用户是能够提供以下信息的产品、增长、销售或开发团队成员：
 
-- a web application URL;
-- a natural-language demo goal;
-- optional audience and language;
-- an optional approximate duration.
+- Web 应用 URL；
+- 自然语言演示目标；
+- 可选的受众与语言；
+- 可选的大致时长。
 
-Credentials and other sensitive values are runtime inputs. They are never part
-of DemoSpec, source control, logs, narration, or rendered artifacts.
+凭据和其他敏感值属于运行时输入。它们绝不会成为 DemoSpec、源代码控制、日志、旁白或渲染产物的一部分。
 
-## Outputs
+## 输出
 
-A completed run should eventually produce:
+一次完整运行最终应生成：
 
-- a versioned `DemoSpec`;
-- a browser execution trace;
-- deterministic assertion results and evidence;
-- screenshots and browser recording;
-- narration and presentation metadata;
-- a polished 1080p MP4;
-- a replayable `demo_recipe.json`;
-- an artifact manifest tying claims to evidence.
+- 有版本的 `DemoSpec`；
+- 浏览器执行轨迹；
+- 确定性的断言结果和证据；
+- 截图与浏览器录制；
+- 旁白与演示元数据；
+- 完成度高的 1080p MP4；
+- 可重放的 `demo_recipe.json`；
+- 将声明与证据关联起来的产物清单。
 
-## Core Flow
+## 核心流程
 
-1. **Intent** — capture the requested product story.
-2. **Explore** — inspect supported application surfaces safely.
-3. **Plan** — produce a structured, reviewable DemoSpec.
-4. **Execute** — perform specified actions in a real browser.
-5. **Verify** — determine `PASSED`, `FAILED`, or `BLOCKED` from evidence.
-6. **Capture** — persist events, screenshots, logs, and recordings.
-7. **Narrate** — create text and audio aligned with verified scenes.
-8. **Render** — compose verified material into the final video.
-9. **Replay** — retain a recipe that can be re-run and diagnosed.
+1. **Intent（意图）** — 获取所需的产品叙事。
+2. **Explore（探索）** — 安全检查受支持的应用界面。
+3. **Plan（规划）** — 生成结构化、可审查的 DemoSpec。
+4. **Execute（执行）** — 在真实浏览器中执行指定操作。
+5. **Verify（验证）** — 根据证据判定 `PASSED`、`FAILED` 或 `BLOCKED`。
+6. **Capture（采集）** — 持久化事件、截图、日志和录制。
+7. **Narrate（旁白）** — 创建与已验证场景对齐的文本和音频。
+8. **Render（渲染）** — 将经过验证的素材合成为最终视频。
+9. **Replay（重放）** — 保留可重新运行和诊断的配方。
 
-## Core Domain Concepts
+## 核心领域概念
 
-- **DemoSpec** — versioned, declarative description of a demo and its scenes.
-- **Scene** — a coherent product story beat containing ordered actions and
-  expected outcomes.
-- **Action** — one deterministic instruction such as navigation or input.
-- **Assertion** — a deterministic expected outcome and its evidence policy.
-- **DemoRun** — one lifecycle-tracked execution of a DemoSpec.
-- **TraceEvent** — immutable observation from planning, execution, or capture.
-- **Artifact** — a file or record produced by a run.
-- **DemoRecipe** — replayable inputs plus stable execution metadata.
+- **DemoSpec** — 对演示及其场景进行声明式描述的版本化结构。
+- **Scene** — 包含有序操作和预期结果的一段连贯产品叙事。
+- **Action** — 导航或输入等一项确定性指令。
+- **Assertion** — 确定性的预期结果及其证据策略。
+- **DemoRun** — 一次受生命周期跟踪的 DemoSpec 执行。
+- **TraceEvent** — 规划、执行或采集过程中的不可变观察记录。
+- **Artifact** — 一次运行生成的文件或记录。
+- **DemoRecipe** — 可重放输入和稳定执行元数据。
 
-## Product Requirements
+## 产品要求
 
-- Specs and persisted artifacts are versioned.
-- Execution is deterministic wherever the application permits it.
-- Successful execution and successful verification are separate states.
-- Scene, Action, and Assertion identities remain stable when specs are traced,
-  replayed, or repaired.
-- Verification is independent from narration and visual polish.
-- A failed or blocked scene is never silently converted into success footage.
-- Each important claim can be traced to its assertion and evidence.
-- Local development remains supported throughout early stages.
-- Model providers and media renderers sit behind narrow boundaries.
+- 规范和持久化产物必须有版本。
+- 在应用允许的范围内，执行必须具有确定性。
+- 执行成功与验证成功是两个独立状态。
+- 对规范进行跟踪、重放或修复时，Scene、Action 和 Assertion 的标识必须保持稳定。
+- 验证独立于旁白和视觉润色。
+- 失败或阻塞的场景绝不能被静默转换为成功视频。
+- 每项重要声明都能追溯到其断言和证据。
+- 在早期阶段始终支持本地开发。
+- 模型提供方与媒体渲染器必须位于窄接口之后。
 
-## Execution and Verification Semantics
+## 执行与验证语义
 
-Completing browser actions does not prove the requested product outcome. An
-execution may become `EXECUTED` after every specified action completes, but it
-becomes `PASSED` only after a deterministic verifier evaluates all required
-assertions and associates them with evidence.
+完成浏览器操作并不能证明所需的产品结果。所有指定操作完成后，一次执行可以变为 `EXECUTED`；但只有确定性验证器评估所有必需断言并将其与证据关联后，才能变为 `PASSED`。
 
-`FAILED` represents a deterministic failure with a recorded reason.
-`BLOCKED` represents an external precondition that prevents meaningful
-execution or verification, such as unavailable authentication.
+`FAILED` 表示有记录原因的确定性失败。`BLOCKED` 表示外部前置条件阻止了有意义的执行或验证，例如认证不可用。
 
-DemoSpec literal fill values are non-sensitive demonstration data. Credentials
-and secrets are runtime inputs and are never embedded in DemoSpec.
+DemoSpec 中的字面填充值只能是非敏感演示数据。凭据和密钥属于运行时输入，绝不能嵌入 DemoSpec。
 
-## Non-goals
+## 非目标
 
-ProofDemo is not:
+ProofDemo 不是：
 
-- a general-purpose coding agent;
-- a general video editor;
-- arbitrary desktop automation;
-- an autonomous purchasing system;
-- a distributed enterprise workflow engine;
-- a multi-agent swarm;
-- an HTTP-native agent harness;
-- an extension of MiniCodex.
+- 通用编程代理；
+- 通用视频编辑器；
+- 任意桌面自动化工具；
+- 自主购买系统；
+- 分布式企业工作流引擎；
+- 多代理集群；
+- HTTP 原生代理执行框架；
+- MiniCodex 的扩展。
 
-## V1 Success Condition
+## V1 成功条件
 
-A user can give ProofDemo a supported web application URL and a short request,
-then receive a verified, replayable 1080p demo video. Every important success
-claim is backed by recorded evidence, and failed or blocked scenes are reported
-honestly.
+用户可以向 ProofDemo 提供受支持的 Web 应用 URL 和简短请求，并获得经过验证、可重放的 1080p 演示视频。每项重要成功声明都有录制证据支持，失败或阻塞的场景会被如实报告。

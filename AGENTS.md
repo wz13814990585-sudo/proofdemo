@@ -1,66 +1,46 @@
-# ProofDemo Repository Instructions
+# ProofDemo 仓库说明
 
-## Mission
+## 使命
 
-ProofDemo turns a web application URL and a natural-language demo goal into a
-verified, replayable product demo. Its product flow is:
+ProofDemo 将 Web 应用 URL 和自然语言演示目标转换为经过验证、可重放的产品演示。其产品流程为：
 
 `Intent -> Plan -> Execute -> Verify -> Capture -> Render`
 
-ProofDemo is not merely a screen recorder or AI video generator. A claim of
-success must be backed by observable evidence; never treat an LLM statement as
-proof. Important outcomes should use deterministic checks against DOM state,
-navigation, network responses, downloads, application state, or artifacts.
-Results must distinguish `PASSED`, `FAILED`, and `BLOCKED`.
+ProofDemo 不只是录屏工具或 AI 视频生成器。任何成功声明都必须有可观察证据支持；绝不能把 LLM 的陈述当作证明。重要结果应通过针对 DOM 状态、导航、网络响应、下载、应用状态或产物的确定性检查来验证。结果必须明确区分 `PASSED`、`FAILED` 和 `BLOCKED`。
 
-## Read Before Substantial Work
+## 开始实质性工作前
 
-Read these sources of truth before implementation:
+实施前请先阅读以下事实来源：
 
 - `docs/PROJECT_SPEC.md`
 - `docs/ARCHITECTURE.md`
 - `docs/ROADMAP.md`
 - `docs/CURRENT_STAGE.md`
 
-`docs/CURRENT_STAGE.md` defines the active scope. Do not implement later stages
-unless the user explicitly changes the scope. Record useful future work in the
-roadmap instead of silently adding it.
+`docs/CURRENT_STAGE.md` 定义当前活动范围。除非用户明确变更范围，否则不要实施后续阶段。对未来有价值的工作应记录到路线图中，不要擅自加入。
 
-## Engineering Rules
+## 工程规则
 
-- Prefer deterministic code for state transitions, validation, retries,
-  persistence, recording, rendering, timing, and artifact handling.
-- Reserve model reasoning for intent interpretation, ambiguous UI decisions,
-  planning, and narration where it provides clear value.
-- Keep the architecture modular and locally usable, but simple.
-- Do not introduce agent hierarchies, distributed infrastructure, queues,
-  microservices, or Kubernetes without a current-stage requirement.
-- Do not integrate MiniCodex or create a separate HTTP-native agent framework.
-- Inspect relevant code and make the smallest coherent change. Preserve working
-  behavior and avoid parallel implementations.
-- Use mature libraries for commodity functions. Keep DemoSpec, verification,
-  execution semantics, replay logic, trace-to-video mapping, and evaluation
-  under project control.
-- Use typed interfaces, structured models, explicit errors, focused modules,
-  and testable boundaries. Avoid hidden global state and stringly typed internal
-  protocols.
-- Never commit secrets or expose them in recordings, screenshots, logs, or
-  artifacts. Use environment variables and `.env.example`.
+- 状态转换、验证、重试、持久化、录制、渲染、计时和产物处理优先采用确定性代码。
+- 仅在模型推理能提供明确价值时，将其用于意图理解、有歧义的 UI 决策、规划和旁白。
+- 架构应保持模块化、可在本地使用，同时保持简单。
+- 当前阶段没有要求时，不要引入代理层级、分布式基础设施、队列、微服务或 Kubernetes。
+- 不要集成 MiniCodex，也不要另建 HTTP 原生代理框架。
+- 检查相关代码并做最小且连贯的修改。保留已有正常行为，避免并行实现。
+- 通用能力使用成熟库。DemoSpec、验证、执行语义、重放逻辑、轨迹到视频的映射及评估必须由项目自行掌控。
+- 使用类型化接口、结构化模型、显式错误、职责集中的模块和可测试边界。避免隐藏的全局状态和以字符串代替类型的内部协议。
+- 绝不能提交密钥，也不能在录制、截图、日志或产物中暴露密钥。使用环境变量和 `.env.example`。
 
-## Completion Rules
+## 完成规则
 
-A task is complete only when its current-stage acceptance criteria are checked.
-Before completion:
+只有当前阶段的验收标准全部检查完毕，任务才算完成。完成前必须：
 
-1. run relevant tests and configured lint/type checks;
-2. exercise the changed behavior where feasible;
-3. inspect failures instead of bypassing them;
-4. update documentation when architecture or behavior changed;
-5. report only validation that was actually run.
+1. 运行相关测试以及已配置的 lint/类型检查；
+2. 在可行时实际运行修改后的行为；
+3. 检查失败原因，而不是绕过失败；
+4. 架构或行为发生变化时更新文档；
+5. 只报告实际执行过的验证。
 
-Do not weaken a test or acceptance criterion merely to obtain a pass. Separate
-implementation failures from environment failures, unrelated regressions,
-flaky tests, and invalid test assumptions.
+不要仅为了通过而削弱测试或验收标准。应区分实现失败、环境失败、无关回归、不稳定测试和无效的测试假设。
 
-Completion reports should cover what changed, design decisions, files changed,
-validation results, and intentionally deferred work.
+完成报告应说明修改内容、设计决策、变更文件、验证结果以及有意推迟的工作。

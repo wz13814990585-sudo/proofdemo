@@ -1,36 +1,25 @@
 # ProofDemo
 
-ProofDemo is a verified product demo system. Its long-term goal is to turn a web
-application URL and natural-language intent into a polished, replayable demo
-whose important claims are backed by observable evidence.
+ProofDemo 是一个经过验证的产品演示系统。它的长期目标是把 Web 应用 URL 和自然语言意图转换为完成度高、可重放的演示，并让其中的重要声明都有可观察证据支持。
 
-The product flow is:
+产品流程为：
 
 ```text
 Intent -> Plan -> Execute -> Verify -> Capture -> Render
 ```
 
-This repository implements **ProofDemo V1**: a bounded optional planner,
-deterministic execution and verification, correlated artifacts, 1080p video,
-opt-in evidence-grounded narration, replay recipes, deterministic UI change
-detection, and review-required single-scene target repair. The V1 release also
-adds an offline quality benchmark, resource budgets, pre-execution safety
-assessment, production configuration hardening, and release operations. A model
-may propose a reviewable DemoSpec or target repair, but it cannot execute either
-or claim success; spoken product claims are fixed templates derived from passed
-assertions. See [the current stage](docs/CURRENT_STAGE.md) for the exact scope.
+本仓库实现了 **ProofDemo V1**：有界的可选规划器、确定性执行与验证、关联产物、1080p 视频、按需启用且基于证据的旁白、重放配方、确定性 UI 变化检测，以及需要审核的单场景目标修复。V1 还加入了离线质量基准、资源预算、执行前安全评估、生产配置强化和发布运维能力。模型可以提出可审查的 DemoSpec 或目标修复建议，但不能执行它们，也不能声称成功；口述的产品声明只能使用从已通过断言派生的固定模板。准确范围请参阅[当前阶段](docs/CURRENT_STAGE.md)。
 
-## Prerequisites
+## 前置要求
 
-- Python 3.11 or newer
-- Node.js 20.19 or newer
-- npm 10 or newer
-- FFmpeg and FFprobe with H.264 encoding support
+- Python 3.11 或更高版本
+- Node.js 20.19 或更高版本
+- npm 10 或更高版本
+- 支持 H.264 编码的 FFmpeg 和 FFprobe
 
-## Backend setup
+## 后端设置
 
-Create an isolated Python environment and install the project with development
-tools:
+创建隔离的 Python 环境，并安装项目及开发工具：
 
 ```bash
 python3 -m venv .venv
@@ -41,35 +30,27 @@ python -m playwright install chromium
 cp .env.example .env
 ```
 
-The deterministic pipeline does not require an API key. To use the optional
-planner, set `OPENAI_API_KEY` in the environment and select an explicit model
-with `PROOFDEMO_OPENAI_MODEL` or `--model`; ProofDemo never selects a floating
-default model for you.
+确定性管线不需要 API 密钥。若要使用可选规划器，请在环境中设置 `OPENAI_API_KEY`，并通过 `PROOFDEMO_OPENAI_MODEL` 或 `--model` 选择一个明确的模型；ProofDemo 不会替你选择会浮动变化的默认模型。
 
-Opt-in narration additionally requires an explicit
-`PROOFDEMO_OPENAI_TTS_MODEL` and `PROOFDEMO_OPENAI_TTS_VOICE` (or matching CLI
-flags). The speech provider receives only already-approved narration text. The
-[OpenAI text-to-speech guide](https://developers.openai.com/api/docs/guides/text-to-speech)
-documents the WAV speech endpoint used by the adapter.
+按需启用旁白还需要明确设置 `PROOFDEMO_OPENAI_TTS_MODEL` 和 `PROOFDEMO_OPENAI_TTS_VOICE`（或对应的 CLI 参数）。语音提供方只会接收已经批准的旁白文本。适配器使用的 WAV 语音端点记录在 [OpenAI 文本转语音指南](https://developers.openai.com/api/docs/guides/text-to-speech)中。
 
-Start the API:
+启动 API：
 
 ```bash
 proofdemo-api
 ```
 
-The API runs at `http://127.0.0.1:8000`. Verify it with:
+API 运行在 `http://127.0.0.1:8000`。可通过以下命令验证：
 
 ```bash
 curl http://127.0.0.1:8000/health
 ```
 
-Interactive API documentation is available at `http://127.0.0.1:8000/docs` in
-development. It is disabled when `PROOFDEMO_ENVIRONMENT=production`.
+开发环境可在 `http://127.0.0.1:8000/docs` 访问交互式 API 文档。当 `PROOFDEMO_ENVIRONMENT=production` 时，该文档会被禁用。
 
-## Frontend setup
+## 前端设置
 
-In a second terminal:
+在第二个终端中运行：
 
 ```bash
 npm --prefix frontend install
@@ -77,12 +58,11 @@ cp frontend/.env.example frontend/.env.local
 npm --prefix frontend run dev
 ```
 
-Open `http://127.0.0.1:5173`. The frontend checks the API health endpoint. Set
-`VITE_API_BASE_URL` in `frontend/.env.local` to override its default API URL.
+打开 `http://127.0.0.1:5173`。前端会检查 API 健康端点。可在 `frontend/.env.local` 中设置 `VITE_API_BASE_URL`，覆盖默认 API URL。
 
-## Run the deterministic example
+## 运行确定性示例
 
-To create a candidate DemoSpec from a goal without running a browser:
+若要根据目标创建候选 DemoSpec，但不启动浏览器：
 
 ```bash
 proofdemo plan https://app.example.test/ \
@@ -91,31 +71,23 @@ proofdemo plan https://app.example.test/ \
   --output candidate.json
 ```
 
-Review the generated file before passing it to `proofdemo run`. Planning is one
-structured-output call with no tools or conversation persistence, and the
-candidate is revalidated against the same-origin DemoSpec contract. See the
-[OpenAI structured outputs guide](https://developers.openai.com/api/docs/guides/structured-outputs)
-for the provider mechanism used by the adapter.
+将生成的文件传给 `proofdemo run` 前必须先进行审查。规划只执行一次结构化输出调用，不使用工具，也不持久化对话；候选结果会按同源 DemoSpec 契约重新验证。适配器使用的提供方机制请参阅 [OpenAI 结构化输出指南](https://developers.openai.com/api/docs/guides/structured-outputs)。
 
-For the checked-in deterministic example, start the separate Todo fixture in
-one terminal:
+对于仓库内置的确定性示例，请在一个终端中启动独立的 Todo fixture：
 
 ```bash
 python scripts/serve_todo_app.py
 ```
 
-Then execute the checked-in DemoSpec in another terminal:
+然后在另一个终端中执行内置 DemoSpec：
 
 ```bash
 proofdemo run examples/demo_spec.json --artifacts artifacts/todo-demo
 ```
 
-Before any browser starts, ProofDemo writes `safety_assessment.json`.
-Credential-like fills are always blocked. Named destructive, financial,
-account, or production actions require fresh per-command approval with
-`--allow-risky-actions`; replay and repair never inherit an earlier approval.
+任何浏览器启动前，ProofDemo 都会写入 `safety_assessment.json`。类似凭据的填充操作始终会被阻止。具名的破坏性、金融、账户或生产环境操作必须通过 `--allow-risky-actions` 获得当次命令的重新批准；重放和修复不会继承此前批准。
 
-To add AI speech after the same run verifies successfully:
+若要在同一次运行成功验证后添加 AI 语音：
 
 ```bash
 proofdemo run examples/demo_spec.json \
@@ -125,29 +97,20 @@ proofdemo run examples/demo_spec.json \
   --voice YOUR_EXPLICIT_VOICE
 ```
 
-Narration is never implied by configured credentials; `--narrate` is required.
-The first cue discloses that the voice is AI-generated.
+仅配置凭据不会自动启用旁白；必须提供 `--narrate`。第一条语音提示会声明该声音由 AI 生成。
 
-Every successful run also writes `demo_recipe.json`. Replay it into a new
-artifact directory with:
+每次成功运行还会写入 `demo_recipe.json`。可将其重放到新的产物目录：
 
 ```bash
 proofdemo replay artifacts/todo-demo/demo_recipe.json \
   --artifacts artifacts/todo-demo-replay
 ```
 
-`replay_preflight.json` records the recipe/source provenance and every
-compatibility issue before the browser starts. Replay narration remains opt-in
-with the same `--narrate`, `--tts-model`, and `--voice` flags.
+浏览器启动前，`replay_preflight.json` 会记录配方/源运行的来源及每项兼容性问题。重放旁白仍需通过相同的 `--narrate`、`--tts-model` 和 `--voice` 参数按需启用。
 
-When the source `execution_report.json` is beside the recipe, replay also
-verifies its recipe-recorded hash and writes `ui_change_report.json`. Use
-`--baseline-artifacts PATH` to select a different baseline directory. An
-explicit missing or invalid baseline stops before browser execution; a portable
-recipe without local baseline evidence can still replay with change status
-`NOT_EVALUATED`.
+如果源 `execution_report.json` 与配方位于同一目录，重放还会验证配方中记录的哈希，并写入 `ui_change_report.json`。使用 `--baseline-artifacts PATH` 可选择其他基线目录。显式指定的基线缺失或无效时，流程会在浏览器执行前停止；不带本地基线证据的可移植配方仍可重放，但变化状态为 `NOT_EVALUATED`。
 
-For a `CHANGED` replay, propose one bounded scene repair without executing it:
+对于结果为 `CHANGED` 的重放，可以提出一个有界的场景修复，但不执行它：
 
 ```bash
 proofdemo propose-repair artifacts/todo-demo/demo_recipe.json \
@@ -158,7 +121,7 @@ proofdemo propose-repair artifacts/todo-demo/demo_recipe.json \
   --output repair-candidate.json
 ```
 
-After reviewing the candidate, explicitly approve execution:
+审核候选结果后，再明确批准执行：
 
 ```bash
 proofdemo apply-repair artifacts/todo-demo/demo_recipe.json repair-candidate.json \
@@ -167,32 +130,19 @@ proofdemo apply-repair artifacts/todo-demo/demo_recipe.json repair-candidate.jso
   --artifacts artifacts/todo-demo-repaired
 ```
 
-A fully verified repair writes `partial_render.json` and
-`demo-repaired.mp4`. Unchanged scenes source their ranges from baseline video;
-only the diagnosed scene sources new footage.
+完整通过验证的修复会写入 `partial_render.json` 和 `demo-repaired.mp4`。未变化场景的时间范围来自基线视频；只有被诊断的场景使用新录制素材。
 
-A successful Stage 4 run exits `0`, transitions through `EXECUTED` to `PASSED`,
-and writes `execution_report.json`, `trace.jsonl`, `browser.log.jsonl`,
-`browser.webm`, `timeline.json`, `demo.mp4`, `artifact_manifest.json`, the
-requested screenshot, and correlated evidence screenshots. The final MP4 is
-H.264/yuv420p at 1920×1080 and 30 fps. `EXECUTED` continues to mean only that
-browser actions completed; only the deterministic verifier can produce
-`PASSED`, and only a verified integrity-checked run is composed.
+一次成功的 Stage 4 运行会以 `0` 退出，依次从 `EXECUTED` 转换到 `PASSED`，并写入 `execution_report.json`、`trace.jsonl`、`browser.log.jsonl`、`browser.webm`、`timeline.json`、`demo.mp4`、`artifact_manifest.json`、请求的截图以及关联证据截图。最终 MP4 为 1920×1080、30 fps 的 H.264/yuv420p。`EXECUTED` 始终只表示浏览器操作已完成；只有确定性验证器可以产生 `PASSED`，并且只有经过验证且完整性检查通过的运行才能被合成。
 
-A successful run also writes `demo_recipe.json`, embedding the canonical
-DemoSpec plus its fingerprint, fixed execution profile, schema requirements,
-and hashes for the source execution report and final video.
+成功运行还会写入 `demo_recipe.json`，其中嵌入规范化 DemoSpec 及其指纹、固定执行 profile、schema 要求，以及源执行报告和最终视频的哈希。
 
-An opted-in narrated run additionally writes `narration.json`, one PCM WAV per
-scene, and `demo-narrated.mp4` with H.264 video and AAC audio. Every cue cites a
-passed assertion and retains the exact verified scene bounds.
+按需启用旁白的运行还会写入 `narration.json`、每场景一个 PCM WAV，以及包含 H.264 视频和 AAC 音频的 `demo-narrated.mp4`。每条提示都会引用一个已通过断言，并保留准确的已验证场景边界。
 
-The CLI uses exit code `1` for an action-level `FAILED` result, `2` for blocked
-browser infrastructure or artifact output, and `64` for an invalid input spec.
+CLI 对操作级 `FAILED` 结果使用退出码 `1`；对被阻塞的浏览器基础设施或产物输出使用 `2`；对无效输入规范使用 `64`。
 
-## Validation
+## 验证
 
-With the Python environment active and frontend dependencies installed, run:
+激活 Python 环境并安装前端依赖后，运行：
 
 ```bash
 proofdemo benchmark --output artifacts/benchmark_report.json
@@ -203,64 +153,39 @@ mypy backend/src
 npm --prefix frontend run build
 ```
 
-Export the shared DemoSpec schema after changing domain models:
+修改领域模型后导出共享 DemoSpec schema：
 
 ```bash
 python scripts/export_schema.py
 ```
 
-The tests fail if
-`shared/schemas/demo_spec.schema.json` does not match the authoritative Pydantic
-model.
+如果 `shared/schemas/demo_spec.schema.json` 与权威 Pydantic 模型不一致，测试会失败。
 
-The offline benchmark exercises verified success, assertion failure, action
-failure, and blocked infrastructure through the application services. V1
-requires perfect expected terminal outcomes, evidence coverage, and trace
-integrity on this fixed suite; it is a release gate, not a claim about arbitrary
-websites or provider quality.
+离线基准通过应用服务覆盖验证成功、断言失败、操作失败和基础设施阻塞。V1 要求这个固定测试集上的预期终态结果、证据覆盖率和轨迹完整性全部达到满分；这是发布门禁，并不代表对任意网站或提供方质量的声明。
 
-## Domain boundaries
+## 领域边界
 
-- DemoSpec `1.2` uses stable Scene, Action, and Assertion IDs and requires at
-  least one assertion per scene.
-- `source_url` defines the allowed origin; every `goto` remains on that origin.
-- `pause` is a presentation delay, not a page-readiness check.
-- Literal fill values are non-sensitive demonstration data only.
-- The browser adapter enforces the DemoSpec source origin before navigation and
-  after redirects.
-- Deterministic assertions cover element visibility, text containment, exact
-  normalized URLs, completed downloads, and one declared JSON application
-  state key.
-- `EXECUTED` means actions completed. It does not mean assertions passed.
-- `PASSED` requires every scene assertion to pass with structured evidence.
-- Capture failures become explicit artifact warnings and trace events; they do
-  not rewrite deterministic assertion outcomes.
-- The artifact manifest records relative paths, media types, byte counts,
-  SHA-256 digests, and stable correlation IDs for every other run artifact.
-- Timeline policy is project-owned; FFmpeg is a narrow adapter for probing,
-  scaling, letterboxing, and encoding.
-- A planner can propose only a DemoSpec candidate. ProofDemo revalidates it,
-  preserves the requested origin, and requires a separate explicit run command.
-- Narration uses only short project-owned phrases selected by passed assertion
-  type. TTS synthesizes those phrases but cannot author or expand claims.
-- Speech that cannot fit its scene within the bounded tempo policy is rejected;
-  it is not truncated, shifted, or allowed to cover another scene.
-- A recipe is portable input, not trusted execution authority. Replay validates
-  its spec fingerprint, versions, schemas, and execution profile first, then
-  delegates to the same deterministic pipeline and creates a fresh run ID.
-- UI change detection compares stable action/assertion IDs and structured
-  observations against the verified baseline. It reports change categories but
-  cannot rewrite selectors, assertions, run status, or footage.
-- Repairs may replace only diagnosed typed targets on existing click/fill
-  actions or element/text assertions in one scene. Applying a reviewed proposal
-  reruns the complete DemoSpec; partial rendering occurs only after `PASSED`.
-- Specs are bounded to 50 scenes, 100 actions and 100 assertions per scene, 500
-  total actions/assertions, and five minutes of declared pause time.
-- Safety assessment is deterministic and precedes browser construction. Its
-  decision and any explicit approval are included in the artifact manifest for
-  every executed run.
+- DemoSpec `1.2` 为 Scene、Action 和 Assertion 使用稳定 ID，并要求每个场景至少包含一项断言。
+- `source_url` 定义允许访问的源站；每个 `goto` 都必须停留在该源站。
+- `pause` 是演示延时，不是页面就绪检查。
+- 字面填充值只能是非敏感演示数据。
+- 浏览器适配器会在导航前和重定向后强制执行 DemoSpec 源站约束。
+- 确定性断言覆盖元素可见性、文本包含、精确规范化 URL、已完成下载，以及一个声明的 JSON 应用状态键。
+- `EXECUTED` 表示操作已完成，并不表示断言已通过。
+- `PASSED` 要求每个场景的所有断言都带有结构化证据并通过。
+- 采集失败会变成显式产物警告和轨迹事件；不会改写确定性断言结果。
+- 产物清单会为该运行的所有其他产物记录相对路径、媒体类型、字节数、SHA-256 摘要和稳定关联 ID。
+- 时间线策略由项目掌控；FFmpeg 只是用于探测、缩放、加黑边和编码的窄适配器。
+- 规划器只能提出 DemoSpec 候选。ProofDemo 会重新验证候选、保持请求的源站，并要求单独、明确地执行 run 命令。
+- 旁白只使用根据已通过断言类型选择的、由项目定义的短句。TTS 可以合成这些短句，但不能创作或扩展声明。
+- 在有界语速策略下无法放入所属场景的语音会被拒绝；不会被截断、移动，也不能覆盖另一个场景。
+- 配方是可移植输入，不是可信执行授权。重放会先验证规范指纹、版本、schema 和执行 profile，再委托给同一确定性管线并创建新的运行 ID。
+- UI 变化检测根据稳定的操作/断言 ID，将结构化观察与已验证基线比较。它会报告变化类别，但不能改写选择器、断言、运行状态或素材。
+- 修复只能替换一个场景中已诊断的现有 click/fill 操作或 element/text 断言的类型化目标。应用已审核建议后，会重新运行完整 DemoSpec；只有状态为 `PASSED` 后才能进行局部渲染。
+- 规范最多包含 50 个场景；每场景最多 100 个操作和 100 个断言；操作和断言总数分别最多 500 个；声明的暂停总时长最多五分钟。
+- 安全评估是确定性的，并且先于浏览器构建。每次实际执行的产物清单都包含其决策和任何明确批准。
 
-## Repository map
+## 仓库结构
 
 ```text
 backend/src/proofdemo/  API, planning/execution/verification/media, and adapters
@@ -272,29 +197,17 @@ tests/                  API and domain tests
 docs/                   product, architecture, roadmap, and stage scope
 ```
 
-## Project documents
+## 项目文档
 
-- [Product specification](docs/PROJECT_SPEC.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [Roadmap](docs/ROADMAP.md)
-- [Current stage](docs/CURRENT_STAGE.md)
-- [Threat model](docs/THREAT_MODEL.md)
-- [Operations guide](docs/OPERATIONS.md)
-- [Release checklist](docs/RELEASE_CHECKLIST.md)
-- [Security policy](SECURITY.md)
+- [产品规格](docs/PROJECT_SPEC.md)
+- [架构](docs/ARCHITECTURE.md)
+- [路线图](docs/ROADMAP.md)
+- [当前阶段](docs/CURRENT_STAGE.md)
+- [威胁模型](docs/THREAT_MODEL.md)
+- [运维指南](docs/OPERATIONS.md)
+- [发布清单](docs/RELEASE_CHECKLIST.md)
+- [安全策略](SECURITY.md)
 
-## Security
+## 安全
 
-Never commit credentials or place them in DemoIntent or DemoSpec files. `.env`
-is ignored; `.env.example` documents non-secret configuration only. V1 accepts only
-non-sensitive literal fill data, constrains navigation to one origin, and does
-not inject browser credentials. The application-state assertion reads one
-validated top-level key and cannot execute spec-provided JavaScript. Fill
-values are omitted from action trace payloads, and browser diagnostic text is
-bounded and sanitized before persistence. Provider adapters read credentials
-only from the environment and never store them in planner inputs, candidates,
-traces, narration text, or artifacts. TTS receives only non-sensitive grounded
-phrases, and artifact metadata records the AI voice disclosure. Recipes contain
-no environment snapshot, cookies, storage state, or credentials. The safety
-screen is deliberately conservative but cannot infer the effect of misleading
-or opaque target labels; human DemoSpec review remains required.
+绝不能提交凭据，也不能将其放入 DemoIntent 或 DemoSpec 文件。`.env` 已被忽略；`.env.example` 只记录非秘密配置。V1 只接受非敏感字面填充数据，将导航限制在单一源站，并且不注入浏览器凭据。应用状态断言只能读取一个经过验证的顶层键，不能执行规范提供的 JavaScript。操作轨迹载荷会省略填充值，浏览器诊断文本会在持久化前进行有界清理和脱敏。提供方适配器只从环境读取凭据，绝不会将其存入规划器输入、候选结果、轨迹、旁白文本或产物。TTS 只接收非敏感、基于证据的固定短句，产物元数据会记录 AI 语音声明。配方不包含环境快照、Cookie、存储状态或凭据。安全筛查有意采用保守策略，但无法推断误导性或不透明目标标签背后的真实效果；仍然需要人工审查 DemoSpec。
