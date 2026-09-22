@@ -1,58 +1,70 @@
-# Current Stage — Stage 0: Foundation
+# Current Stage — Stage 0.1: Execution Contract Hardening
 
 ## Goal
 
-Establish a small, maintainable ProofDemo repository foundation. Stage 0 should
-make product contracts explicit and give Stage 1 a tested base; it must not
-attempt autonomous demo generation.
+Stabilize ProofDemo's domain and local-development contracts before any browser
+runtime consumes them. This stage corrects verification semantics, identity,
+target typing, time handling, configuration, and roadmap boundaries discovered
+during the Stage 0 architecture review.
+
+Stage 0.1 must not install Playwright or implement browser execution.
 
 ## Required Outcomes
 
-1. A typed backend application can start and exposes a health endpoint.
-2. A typed frontend application can build and start.
-3. A versioned DemoSpec domain model exists.
-4. A generated, shared DemoSpec JSON Schema exists and matches the model.
-5. A valid example DemoSpec passes model validation.
-6. A deterministic DemoRun lifecycle accepts legal transitions and rejects
-   illegal or post-terminal transitions.
-7. Environment configuration has safe defaults and a documented example.
-8. Repository tests and configured static checks pass.
-9. Architecture documentation matches the implementation.
-10. README contains complete local setup and validation instructions.
+1. `EXECUTED` means browser actions completed without claiming verification.
+2. `PASSED` remains reserved for a future verifier and has no legal incoming
+   transition in the current implementation.
+3. DemoSpec schema version `1.1` provides stable Scene, Action, and Assertion
+   identities, and validates their uniqueness.
+4. Element targets use strategy-specific typed models rather than overloaded
+   `value` and `name` fields.
+5. Fixed-duration pacing is explicitly represented as `pause`; it is not a
+   page-readiness mechanism.
+6. `source_url` defines the allowed Stage 1 origin, the first action is an
+   explicit navigation, and every navigation remains on that origin.
+7. DemoRun timestamps are timezone-aware, normalized to UTC, and invalid time
+   input raises an explicit domain error.
+8. `.env` configuration is actually loaded, and documented frontend/backend
+   defaults use the same origin spelling.
+9. Stage 1 requested screenshots and lightweight execution results are clearly
+   separated from Stage 3 automatic capture and full trace persistence.
+10. Documentation, examples, generated schema, and tests agree with the
+    hardened contracts.
 
 ## Acceptance Criteria
 
-The following checks must succeed from a clean local checkout after installing
-the documented dependencies:
+The following checks must succeed:
 
 ```text
 python -m pytest
+ruff format --check .
 ruff check .
 mypy backend/src
 npm --prefix frontend run build
 ```
 
-In addition:
+The test suite must also demonstrate that:
 
-- `GET /health` returns HTTP 200 with `status: "ok"`;
-- `examples/demo_spec.json` validates with the DemoSpec model;
-- `shared/schemas/demo_spec.schema.json` is in sync with the model;
-- legal DemoRun transitions reach `PASSED`, `FAILED`, and `BLOCKED` terminal
-  states in tests;
-- invalid transitions raise an explicit domain error;
-- backend and frontend development servers are smoke-tested locally.
+- a run can reach `EXECUTED`, `FAILED`, and `BLOCKED` as appropriate;
+- no current transition can produce `PASSED`;
+- naive timestamps are rejected with a domain error;
+- duplicate Scene, Action, and Assertion IDs are rejected;
+- invalid target field combinations are rejected;
+- cross-origin navigation and a missing initial navigation are rejected;
+- the checked-in DemoSpec example validates as schema version `1.1`;
+- the shared JSON Schema is in sync;
+- `.env` values load and real environment variables take precedence;
+- the documented frontend origin passes the API's CORS preflight;
+- the Git worktree contains no Playwright dependency or browser executor.
 
 ## Not Included
 
-- browser installation or automation;
-- autonomous exploration or UI recovery;
-- model/LLM calls and intent planning;
-- assertion execution;
-- trace capture or browser recording;
-- narration, TTS, or video rendering;
-- databases, production queues, workers, or distributed infrastructure;
-- replay and repair;
-- CI/CD or cloud deployment.
+- Playwright or any other browser engine;
+- browser execution services or adapters;
+- assertion execution or verification evidence generation;
+- trace capture, automatic screenshots, recording, or artifact manifests;
+- LLM planning, narration, TTS, or rendering;
+- databases, workers, queues, or deployment infrastructure.
 
 ## Completion Status
 
@@ -60,19 +72,22 @@ In addition:
 
 Validation performed:
 
-- `.venv/bin/python -m pytest` — 15 tests passed;
+- `.venv/bin/python -m pytest` — 32 tests passed;
+- `.venv/bin/ruff format --check .` — 18 files already formatted;
 - `.venv/bin/ruff check .` — passed;
-- `.venv/bin/mypy backend/src` — passed with no issues in 7 source files;
+- `.venv/bin/python -m mypy backend/src` — passed with no issues in 7 source
+  files;
 - `npm --prefix frontend run build` — TypeScript and Vite production build
   passed;
-- live Uvicorn smoke test on `127.0.0.1:18080` — `GET /health` returned HTTP
-  200 and the expected service metadata;
-- live Vite smoke test on `127.0.0.1:15173` — returned the application HTML;
-- `examples/demo_spec.json` and the generated schema are covered by the passing
-  contract tests;
-- `PASSED`, `FAILED`, and `BLOCKED` terminal transitions plus invalid and
-  post-terminal transitions are covered by the passing lifecycle tests.
+- generated DemoSpec schema `1.1` matches the authoritative model;
+- live Uvicorn smoke test on `127.0.0.1:18080` returned the expected health
+  response;
+- live CORS preflight from `http://127.0.0.1:15173` returned HTTP 200 with the
+  matching `access-control-allow-origin` header;
+- live Vite smoke test on `127.0.0.1:15173` returned the application HTML;
+- a source/dependency scan confirmed no Playwright or browser-executor
+  implementation was introduced;
+- `git diff --check` passed.
 
-Ports 18080 and 15173 were used only for smoke testing because the normal API
-port 8000 was already occupied by another local process. Both temporary servers
-were stopped after verification.
+Alternate ports 18080 and 15173 were used only for smoke testing. Both
+temporary servers were stopped after verification.

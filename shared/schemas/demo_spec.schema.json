@@ -3,8 +3,40 @@
     "ClickAction": {
       "additionalProperties": false,
       "properties": {
+        "id": {
+          "pattern": "^[a-z][a-z0-9_-]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
         "target": {
-          "$ref": "#/$defs/ElementTarget"
+          "discriminator": {
+            "mapping": {
+              "css": "#/$defs/CssTarget",
+              "label": "#/$defs/LabelTarget",
+              "role": "#/$defs/RoleTarget",
+              "test_id": "#/$defs/TestIdTarget",
+              "text": "#/$defs/TextTarget"
+            },
+            "propertyName": "strategy"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/RoleTarget"
+            },
+            {
+              "$ref": "#/$defs/LabelTarget"
+            },
+            {
+              "$ref": "#/$defs/TextTarget"
+            },
+            {
+              "$ref": "#/$defs/TestIdTarget"
+            },
+            {
+              "$ref": "#/$defs/CssTarget"
+            }
+          ],
+          "title": "Target"
         },
         "timeout_ms": {
           "default": 10000,
@@ -20,60 +52,72 @@
         }
       },
       "required": [
+        "id",
         "type",
         "target"
       ],
       "title": "ClickAction",
       "type": "object"
     },
-    "ElementTarget": {
+    "CssTarget": {
       "additionalProperties": false,
-      "description": "A stable description of a browser element to resolve later.",
       "properties": {
-        "name": {
-          "anyOf": [
-            {
-              "maxLength": 200,
-              "minLength": 1,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Name"
-        },
-        "strategy": {
-          "enum": [
-            "role",
-            "label",
-            "text",
-            "test_id",
-            "css"
-          ],
-          "title": "Strategy",
+        "selector": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Selector",
           "type": "string"
         },
-        "value": {
-          "maxLength": 500,
-          "minLength": 1,
-          "title": "Value",
+        "strategy": {
+          "const": "css",
+          "title": "Strategy",
           "type": "string"
         }
       },
       "required": [
         "strategy",
-        "value"
+        "selector"
       ],
-      "title": "ElementTarget",
+      "title": "CssTarget",
       "type": "object"
     },
     "ElementVisibleAssertion": {
       "additionalProperties": false,
       "properties": {
+        "id": {
+          "pattern": "^[a-z][a-z0-9_-]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
         "target": {
-          "$ref": "#/$defs/ElementTarget"
+          "discriminator": {
+            "mapping": {
+              "css": "#/$defs/CssTarget",
+              "label": "#/$defs/LabelTarget",
+              "role": "#/$defs/RoleTarget",
+              "test_id": "#/$defs/TestIdTarget",
+              "text": "#/$defs/TextTarget"
+            },
+            "propertyName": "strategy"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/RoleTarget"
+            },
+            {
+              "$ref": "#/$defs/LabelTarget"
+            },
+            {
+              "$ref": "#/$defs/TextTarget"
+            },
+            {
+              "$ref": "#/$defs/TestIdTarget"
+            },
+            {
+              "$ref": "#/$defs/CssTarget"
+            }
+          ],
+          "title": "Target"
         },
         "timeout_ms": {
           "default": 10000,
@@ -89,6 +133,7 @@
         }
       },
       "required": [
+        "id",
         "type",
         "target"
       ],
@@ -98,8 +143,40 @@
     "FillAction": {
       "additionalProperties": false,
       "properties": {
+        "id": {
+          "pattern": "^[a-z][a-z0-9_-]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
         "target": {
-          "$ref": "#/$defs/ElementTarget"
+          "discriminator": {
+            "mapping": {
+              "css": "#/$defs/CssTarget",
+              "label": "#/$defs/LabelTarget",
+              "role": "#/$defs/RoleTarget",
+              "test_id": "#/$defs/TestIdTarget",
+              "text": "#/$defs/TextTarget"
+            },
+            "propertyName": "strategy"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/RoleTarget"
+            },
+            {
+              "$ref": "#/$defs/LabelTarget"
+            },
+            {
+              "$ref": "#/$defs/TextTarget"
+            },
+            {
+              "$ref": "#/$defs/TestIdTarget"
+            },
+            {
+              "$ref": "#/$defs/CssTarget"
+            }
+          ],
+          "title": "Target"
         },
         "timeout_ms": {
           "default": 10000,
@@ -114,12 +191,14 @@
           "type": "string"
         },
         "value": {
+          "description": "Non-sensitive demonstration data; never a credential or secret.",
           "maxLength": 10000,
           "title": "Value",
           "type": "string"
         }
       },
       "required": [
+        "id",
         "type",
         "target",
         "value"
@@ -130,6 +209,11 @@
     "GotoAction": {
       "additionalProperties": false,
       "properties": {
+        "id": {
+          "pattern": "^[a-z][a-z0-9_-]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
         "timeout_ms": {
           "default": 30000,
           "maximum": 120000,
@@ -151,10 +235,108 @@
         }
       },
       "required": [
+        "id",
         "type",
         "url"
       ],
       "title": "GotoAction",
+      "type": "object"
+    },
+    "LabelTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "exact": {
+          "default": true,
+          "title": "Exact",
+          "type": "boolean"
+        },
+        "label": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "strategy": {
+          "const": "label",
+          "title": "Strategy",
+          "type": "string"
+        }
+      },
+      "required": [
+        "strategy",
+        "label"
+      ],
+      "title": "LabelTarget",
+      "type": "object"
+    },
+    "PauseAction": {
+      "additionalProperties": false,
+      "description": "A presentation delay, not a page-readiness primitive.",
+      "properties": {
+        "duration_ms": {
+          "maximum": 30000,
+          "minimum": 1,
+          "title": "Duration Ms",
+          "type": "integer"
+        },
+        "id": {
+          "pattern": "^[a-z][a-z0-9_-]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "pause",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "duration_ms"
+      ],
+      "title": "PauseAction",
+      "type": "object"
+    },
+    "RoleTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "exact": {
+          "default": true,
+          "title": "Exact",
+          "type": "boolean"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "role": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Role",
+          "type": "string"
+        },
+        "strategy": {
+          "const": "role",
+          "title": "Strategy",
+          "type": "string"
+        }
+      },
+      "required": [
+        "strategy",
+        "role"
+      ],
+      "title": "RoleTarget",
       "type": "object"
     },
     "Scene": {
@@ -168,8 +350,8 @@
                 "click": "#/$defs/ClickAction",
                 "fill": "#/$defs/FillAction",
                 "goto": "#/$defs/GotoAction",
-                "screenshot": "#/$defs/ScreenshotAction",
-                "wait": "#/$defs/WaitAction"
+                "pause": "#/$defs/PauseAction",
+                "screenshot": "#/$defs/ScreenshotAction"
               },
               "propertyName": "type"
             },
@@ -184,7 +366,7 @@
                 "$ref": "#/$defs/FillAction"
               },
               {
-                "$ref": "#/$defs/WaitAction"
+                "$ref": "#/$defs/PauseAction"
               },
               {
                 "$ref": "#/$defs/ScreenshotAction"
@@ -256,6 +438,11 @@
           "title": "Full Page",
           "type": "boolean"
         },
+        "id": {
+          "pattern": "^[a-z][a-z0-9_-]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
         "name": {
           "pattern": "^[a-z0-9][a-z0-9_-]{0,99}$",
           "title": "Name",
@@ -268,10 +455,33 @@
         }
       },
       "required": [
+        "id",
         "type",
         "name"
       ],
       "title": "ScreenshotAction",
+      "type": "object"
+    },
+    "TestIdTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "strategy": {
+          "const": "test_id",
+          "title": "Strategy",
+          "type": "string"
+        },
+        "test_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Test Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "strategy",
+        "test_id"
+      ],
+      "title": "TestIdTarget",
       "type": "object"
     },
     "TextContainsAssertion": {
@@ -283,8 +493,40 @@
           "title": "Expected Text",
           "type": "string"
         },
+        "id": {
+          "pattern": "^[a-z][a-z0-9_-]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
         "target": {
-          "$ref": "#/$defs/ElementTarget"
+          "discriminator": {
+            "mapping": {
+              "css": "#/$defs/CssTarget",
+              "label": "#/$defs/LabelTarget",
+              "role": "#/$defs/RoleTarget",
+              "test_id": "#/$defs/TestIdTarget",
+              "text": "#/$defs/TextTarget"
+            },
+            "propertyName": "strategy"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/RoleTarget"
+            },
+            {
+              "$ref": "#/$defs/LabelTarget"
+            },
+            {
+              "$ref": "#/$defs/TextTarget"
+            },
+            {
+              "$ref": "#/$defs/TestIdTarget"
+            },
+            {
+              "$ref": "#/$defs/CssTarget"
+            }
+          ],
+          "title": "Target"
         },
         "timeout_ms": {
           "default": 10000,
@@ -300,11 +542,39 @@
         }
       },
       "required": [
+        "id",
         "type",
         "target",
         "expected_text"
       ],
       "title": "TextContainsAssertion",
+      "type": "object"
+    },
+    "TextTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "exact": {
+          "default": true,
+          "title": "Exact",
+          "type": "boolean"
+        },
+        "strategy": {
+          "const": "text",
+          "title": "Strategy",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "strategy",
+        "text"
+      ],
+      "title": "TextTarget",
       "type": "object"
     },
     "UrlEqualsAssertion": {
@@ -317,6 +587,11 @@
           "title": "Expected Url",
           "type": "string"
         },
+        "id": {
+          "pattern": "^[a-z][a-z0-9_-]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
         "type": {
           "const": "url_equals",
           "title": "Type",
@@ -324,32 +599,11 @@
         }
       },
       "required": [
+        "id",
         "type",
         "expected_url"
       ],
       "title": "UrlEqualsAssertion",
-      "type": "object"
-    },
-    "WaitAction": {
-      "additionalProperties": false,
-      "properties": {
-        "duration_ms": {
-          "maximum": 30000,
-          "minimum": 1,
-          "title": "Duration Ms",
-          "type": "integer"
-        },
-        "type": {
-          "const": "wait",
-          "title": "Type",
-          "type": "string"
-        }
-      },
-      "required": [
-        "type",
-        "duration_ms"
-      ],
-      "title": "WaitAction",
       "type": "object"
     }
   },
@@ -410,7 +664,7 @@
       "type": "array"
     },
     "schema_version": {
-      "const": "1.0",
+      "const": "1.1",
       "title": "Schema Version",
       "type": "string"
     },

@@ -63,11 +63,28 @@ A completed run should eventually produce:
 
 - Specs and persisted artifacts are versioned.
 - Execution is deterministic wherever the application permits it.
+- Successful execution and successful verification are separate states.
+- Scene, Action, and Assertion identities remain stable when specs are traced,
+  replayed, or repaired.
 - Verification is independent from narration and visual polish.
 - A failed or blocked scene is never silently converted into success footage.
 - Each important claim can be traced to its assertion and evidence.
 - Local development remains supported throughout early stages.
 - Model providers and media renderers sit behind narrow boundaries.
+
+## Execution and Verification Semantics
+
+Completing browser actions does not prove the requested product outcome. An
+execution may become `EXECUTED` after every specified action completes, but it
+becomes `PASSED` only after a deterministic verifier evaluates all required
+assertions and associates them with evidence.
+
+`FAILED` represents a deterministic failure with a recorded reason.
+`BLOCKED` represents an external precondition that prevents meaningful
+execution or verification, such as unavailable authentication.
+
+DemoSpec literal fill values are non-sensitive demonstration data. Credentials
+and secrets are runtime inputs and are never embedded in DemoSpec.
 
 ## Non-goals
 

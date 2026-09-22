@@ -3,6 +3,7 @@
 from proofdemo.domain.demo_run import (
     DemoRun,
     DemoRunStatus,
+    InvalidRunTimestamp,
     InvalidRunTransition,
     create_demo_run,
     transition_demo_run,
@@ -13,6 +14,7 @@ __all__ = [
     "DemoRun",
     "DemoRunStatus",
     "DemoSpec",
+    "InvalidRunTimestamp",
     "InvalidRunTransition",
     "create_demo_run",
     "transition_demo_run",

@@ -10,10 +10,10 @@ The product flow is:
 Intent -> Plan -> Execute -> Verify -> Capture -> Render
 ```
 
-This repository currently implements **Stage 0 only**: project contracts,
-DemoSpec validation, DemoRun lifecycle rules, an API health surface, a frontend
-shell, and local developer tooling. See [the current stage](docs/CURRENT_STAGE.md)
-for the exact scope.
+This repository currently implements **Stage 0.1**: project foundations plus
+hardened DemoSpec, DemoRun, configuration, and execution/verification
+boundaries. It does not yet contain a browser runtime. See
+[the current stage](docs/CURRENT_STAGE.md) for the exact scope.
 
 ## Prerequisites
 
@@ -55,6 +55,7 @@ In a second terminal:
 
 ```bash
 npm --prefix frontend install
+cp frontend/.env.example frontend/.env.local
 npm --prefix frontend run dev
 ```
 
@@ -67,6 +68,7 @@ With the Python environment active and frontend dependencies installed, run:
 
 ```bash
 python -m pytest
+ruff format --check .
 ruff check .
 mypy backend/src
 npm --prefix frontend run build
@@ -81,6 +83,16 @@ python scripts/export_schema.py
 The tests fail if
 `shared/schemas/demo_spec.schema.json` does not match the authoritative Pydantic
 model.
+
+## Domain boundaries
+
+- DemoSpec `1.1` uses stable Scene, Action, and Assertion IDs.
+- `source_url` defines the allowed origin; every `goto` remains on that origin.
+- `pause` is a presentation delay, not a page-readiness check.
+- Literal fill values are non-sensitive demonstration data only.
+- `EXECUTED` means actions completed. It does not mean assertions passed.
+- `PASSED` is reserved for the Stage 2 deterministic verifier and cannot be
+  produced by the current implementation.
 
 ## Repository map
 
