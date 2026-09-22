@@ -86,3 +86,32 @@ def test_settings_reject_invalid_port(monkeypatch: pytest.MonkeyPatch, value: st
 
     with pytest.raises(ConfigurationError, match="api_port"):
         Settings.from_env()
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "*",
+        "https://user:secret@example.com",
+        "https://example.com/path",
+        "https://example.com:99999",
+        "https://example.com ",
+        "ftp://example.com",
+    ],
+)
+def test_settings_reject_invalid_frontend_origin(origin: str) -> None:
+    with pytest.raises(ValueError, match="frontend_origin"):
+        Settings(frontend_origin=origin)
+
+
+def test_production_requires_https_frontend_origin() -> None:
+    with pytest.raises(ValueError, match="HTTPS"):
+        Settings(environment="production", frontend_origin="http://demo.example.com")
+
+
+def test_provider_settings_normalize_blank_values() -> None:
+    settings = Settings(openai_model=" ", openai_tts_model="", openai_tts_voice="  ")
+
+    assert settings.openai_model is None
+    assert settings.openai_tts_model is None
+    assert settings.openai_tts_voice is None

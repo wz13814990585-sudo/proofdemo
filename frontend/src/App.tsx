@@ -75,15 +75,15 @@ function App() {
         <div className="stage-card">
           <div>
             <span className="stage-label">Current build</span>
-            <strong>Stage 0.1 · Contracts hardened</strong>
+            <strong>V1 · Verified replay pipeline</strong>
           </div>
-          <p>Execution and verification now have separate, testable contracts.</p>
+          <p>Plan, execute, verify, render, replay, diagnose, and repair with evidence.</p>
         </div>
       </section>
 
       <section className="flow" aria-label="ProofDemo product flow">
         {flow.map((step, index) => (
-          <div className={index < 2 ? "flow-step flow-step-active" : "flow-step"} key={step}>
+          <div className="flow-step flow-step-active" key={step}>
             <span>{String(index + 1).padStart(2, "0")}</span>
             <strong>{step}</strong>
           </div>

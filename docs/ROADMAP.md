@@ -67,8 +67,11 @@ selectors, assertions, or scene assumptions.
 Propose bounded scene repairs, require appropriate verification, and rerender
 only invalidated portions of a demo.
 
-## Stage 10 — Benchmarks and Production Hardening (next)
+## Stage 10 — Benchmarks and Production Hardening (complete)
 
 Create representative evaluation fixtures, measure execution and verification
 quality, harden security and operations, and add production infrastructure only
 where measurements justify it.
+
+ProofDemo V1 is complete at Stage 10. Later work must begin with a new scoped
+stage and acceptance criteria; the roadmap does not implicitly authorize it.

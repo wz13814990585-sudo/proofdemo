@@ -526,6 +526,84 @@ def test_cli_never_calls_speech_without_narration_opt_in(
     assert not (tmp_path / "artifacts" / "narration.json").exists()
 
 
+def test_cli_blocks_risky_action_before_browser_without_fresh_approval(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw = load_example()
+    raw["scenes"][0]["actions"][2]["target"] = {
+        "strategy": "role",
+        "role": "button",
+        "name": "Delete account",
+    }
+    spec_path = tmp_path / "risky.json"
+    spec_path.write_text(json.dumps(raw), encoding="utf-8")
+    artifact_dir = tmp_path / "artifacts"
+    monkeypatch.setattr(
+        "proofdemo.cli.PlaywrightBrowser",
+        lambda: (_ for _ in ()).throw(AssertionError("browser must not start")),
+    )
+
+    exit_code = run(["run", str(spec_path), "--artifacts", str(artifact_dir)])
+    assessment = json.loads((artifact_dir / "safety_assessment.json").read_text(encoding="utf-8"))
+
+    assert exit_code == EXIT_BLOCKED
+    assert assessment["decision"] == "REQUIRES_APPROVAL"
+    assert not (artifact_dir / "execution_report.json").exists()
+
+
+def test_risky_action_approval_is_recorded_but_not_inherited_by_replay(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw = load_example()
+    raw["scenes"][0]["actions"][2]["target"] = {
+        "strategy": "role",
+        "role": "button",
+        "name": "Delete account",
+    }
+    spec_path = tmp_path / "risky.json"
+    spec_path.write_text(json.dumps(raw), encoding="utf-8")
+    source_dir = tmp_path / "approved"
+    replay_dir = tmp_path / "replay"
+    monkeypatch.setattr("proofdemo.cli.PlaywrightBrowser", FakeBrowser)
+    monkeypatch.setattr("proofdemo.cli.FFmpegRenderAdapter", FakeRenderer)
+
+    first_exit = run(
+        [
+            "run",
+            str(spec_path),
+            "--artifacts",
+            str(source_dir),
+            "--allow-risky-actions",
+        ]
+    )
+    source_manifest = json.loads(
+        (source_dir / "artifact_manifest.json").read_text(encoding="utf-8")
+    )
+    monkeypatch.setattr(
+        "proofdemo.cli.PlaywrightBrowser",
+        lambda: (_ for _ in ()).throw(AssertionError("replay browser must not start")),
+    )
+    replay_exit = run(
+        [
+            "replay",
+            str(source_dir / "demo_recipe.json"),
+            "--artifacts",
+            str(replay_dir),
+        ]
+    )
+    replay_assessment = json.loads(
+        (replay_dir / "safety_assessment.json").read_text(encoding="utf-8")
+    )
+
+    assert first_exit == EXIT_EXECUTED
+    assert "SAFETY_ASSESSMENT" in {record["kind"] for record in source_manifest["artifacts"]}
+    assert replay_exit == EXIT_BLOCKED
+    assert replay_assessment["decision"] == "REQUIRES_APPROVAL"
+    assert replay_assessment["approval_acknowledged"] is False
+
+
 def test_execution_bundle_trace_is_contiguous_and_omits_fill_value(tmp_path: Path) -> None:
     spec = DemoSpec.model_validate(load_example())
 
@@ -611,6 +689,7 @@ def test_artifact_writer_hashes_and_verifies_every_declared_file(tmp_path: Path)
         ArtifactKind.REPAIR_PROPOSAL,
         ArtifactKind.PARTIAL_RENDER_PLAN,
         ArtifactKind.REPAIRED_VIDEO,
+        ArtifactKind.SAFETY_ASSESSMENT,
     }
     assert len(manifest.artifacts) == 10
     assert all(len(record.sha256) == 64 for record in manifest.artifacts)

@@ -147,6 +147,28 @@ def test_target_rejects_fields_from_another_strategy() -> None:
         DemoSpec.model_validate(raw_spec)
 
 
+def test_scene_rejects_unbounded_action_collection() -> None:
+    raw_spec = example_spec()
+    raw_spec["scenes"][0]["actions"] = [
+        raw_spec["scenes"][0]["actions"][0],
+        *({"id": f"pause-{index}", "type": "pause", "duration_ms": 1} for index in range(100)),
+    ]
+
+    with pytest.raises(ValidationError, match="at most 100 items"):
+        DemoSpec.model_validate(raw_spec)
+
+
+def test_demo_spec_rejects_excessive_total_pause_budget() -> None:
+    raw_spec = example_spec()
+    raw_spec["scenes"][0]["actions"] = [
+        raw_spec["scenes"][0]["actions"][0],
+        *({"id": f"pause-{index}", "type": "pause", "duration_ms": 30_000} for index in range(11)),
+    ]
+
+    with pytest.raises(ValidationError, match="pause budget"):
+        DemoSpec.model_validate(raw_spec)
+
+
 def test_committed_json_schema_matches_model() -> None:
     committed_schema = load_json(ROOT / "shared" / "schemas" / "demo_spec.schema.json")
 
