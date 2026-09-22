@@ -70,7 +70,7 @@ when measurable release gates and end-to-end acceptance pass.
   passed.
 - Dependency review: `pip-audit --skip-editable` and
   `npm audit --omit=dev` reported no known vulnerabilities after raising the
-  pytest and pip release floors used by development/CI.
+  pytest, pip, and setuptools release floors used by development/CI.
 - Real acceptance: the checked-in Todo DemoSpec produced a `PASSED` source run
   and a `PASSED` recipe replay. Both manifests verified with no integrity
   issues; replay preflight was `COMPATIBLE`; comparison was `UNCHANGED`.
