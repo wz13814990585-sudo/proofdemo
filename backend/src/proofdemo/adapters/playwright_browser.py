@@ -41,6 +41,7 @@ from proofdemo.ports.browser import (
     BrowserSessionArtifacts,
     BrowserUnavailableError,
     DownloadObservation,
+    VisualFocus,
 )
 from proofdemo.security import sanitize_diagnostic_text
 
@@ -150,6 +151,24 @@ class PlaywrightBrowser:
             ) from error
         except PlaywrightError as error:
             raise BrowserActionError(f"click failed: {error}") from error
+
+    def visual_focus(self, target: ElementTarget) -> VisualFocus | None:
+        """Read geometry only; failure is a presentation downgrade, not action failure."""
+        try:
+            page = self._require_page()
+            box = self._locator(target).bounding_box(timeout=1_000)
+            viewport = page.viewport_size
+            if box is None or viewport is None:
+                return None
+            width, height = viewport["width"], viewport["height"]
+            if width <= 0 or height <= 0:
+                return None
+            return VisualFocus(
+                x=min(1.0, max(0.0, (box["x"] + box["width"] / 2) / width)),
+                y=min(1.0, max(0.0, (box["y"] + box["height"] / 2) / height)),
+            )
+        except (BrowserActionError, PlaywrightError, KeyError, TypeError, ValueError):
+            return None
 
     def _route_navigation(self, route: Route) -> None:
         request = route.request

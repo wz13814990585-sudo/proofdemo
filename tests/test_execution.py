@@ -624,6 +624,19 @@ def test_execution_bundle_trace_is_contiguous_and_omits_fill_value(tmp_path: Pat
     assert len(bundle.evidence_captures) == 5
 
 
+def test_visual_focus_failure_does_not_change_verified_execution(tmp_path: Path) -> None:
+    class GeometryFailure(FakeBrowser):
+        def visual_focus(self, target: ElementTarget) -> None:
+            raise RuntimeError("geometry-sentinel")
+
+    bundle = ExecutionService(GeometryFailure()).execute_bundle(
+        DemoSpec.model_validate(load_example()), tmp_path
+    )
+
+    assert bundle.report.run.status is DemoRunStatus.PASSED
+    assert not any("geometry-sentinel" in event.model_dump_json() for event in bundle.trace_events)
+
+
 @pytest.mark.parametrize(
     ("browser", "terminal_status"),
     [
@@ -690,6 +703,10 @@ def test_artifact_writer_hashes_and_verifies_every_declared_file(tmp_path: Path)
         ArtifactKind.PARTIAL_RENDER_PLAN,
         ArtifactKind.REPAIRED_VIDEO,
         ArtifactKind.SAFETY_ASSESSMENT,
+        ArtifactKind.POLISH_PLAN,
+        ArtifactKind.POLISH_CAPTIONS,
+        ArtifactKind.POLISH_OVERLAY,
+        ArtifactKind.POLISHED_VIDEO,
     }
     assert len(manifest.artifacts) == 10
     assert all(len(record.sha256) == 64 for record in manifest.artifacts)

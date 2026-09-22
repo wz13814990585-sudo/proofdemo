@@ -13,6 +13,7 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from proofdemo.adapters.ffmpeg_polish import FFmpegVideoPolisher
 from proofdemo.adapters.ffmpeg_render import FFmpegRenderAdapter
 from proofdemo.adapters.openai_exploration import OpenAILinkAdvisor
 from proofdemo.adapters.openai_planner import OpenAIPlanner
@@ -27,16 +28,19 @@ from proofdemo.application.recipes import RecipeService
 from proofdemo.application.rendering import CompositionService
 from proofdemo.application.safety import SafetyDecision, SafetyFinding, SafetyService
 from proofdemo.application.trace import TraceEvent
+from proofdemo.application.video_polish import VideoPolishRefusedError, VideoPolishService
 from proofdemo.config import Settings
 from proofdemo.domain.demo_run import DemoRunStatus
 from proofdemo.domain.demo_spec import DemoSpec
 from proofdemo.domain.exploration import ExplorationReport, ExplorationStatus, PageObservation
 from proofdemo.domain.planning import DemoIntent
 from proofdemo.domain.recipe import demo_spec_sha256
+from proofdemo.domain.video_polish import VideoPolishPlan
 from proofdemo.ports.browser import BrowserPort
 from proofdemo.ports.explorer import ExplorerPort, LinkAdvisorPort
 from proofdemo.ports.planner import PlannerPort, PlannerUnavailableError
 from proofdemo.ports.render import RenderPort, RenderUnavailableError
+from proofdemo.ports.video_polish import PolishRenderError, PolishUnavailableError, VideoPolishPort
 
 
 class JobStatus(StrEnum):
@@ -46,6 +50,7 @@ class JobStatus(StrEnum):
     AWAITING_APPROVAL = "AWAITING_APPROVAL"
     EXECUTING = "EXECUTING"
     RENDERING = "RENDERING"
+    POLISHING = "POLISHING"
     PASSED = "PASSED"
     FAILED = "FAILED"
     BLOCKED = "BLOCKED"
@@ -76,6 +81,7 @@ class JobRecord(BaseModel):
     exploration_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     grounding_status: str | None = None
     grounding_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    video_kind: ArtifactKind | None = None
 
 
 class JobEvent(BaseModel):
@@ -117,6 +123,7 @@ class JobManager:
         renderer_factory: Callable[[], RenderPort] = FFmpegRenderAdapter,
         explorer_factory: Callable[[], ExplorerPort] | None = None,
         advisor_factory: Callable[[], LinkAdvisorPort] | None = None,
+        polisher_factory: Callable[[], VideoPolishPort] | None = None,
     ) -> None:
         self._root = root.resolve()
         self._root.mkdir(parents=True, exist_ok=True)
@@ -125,6 +132,7 @@ class JobManager:
         self._renderer_factory = renderer_factory
         self._explorer_factory = explorer_factory
         self._advisor_factory = advisor_factory
+        self._polisher_factory = polisher_factory
         if (explorer_factory is None) != (advisor_factory is None):
             raise ValueError("explorer and advisor must be configured together")
         self._lock = Lock()
@@ -139,6 +147,7 @@ class JobManager:
             planner_factory=lambda: OpenAIPlanner(settings.openai_model or ""),
             explorer_factory=PlaywrightExplorer,
             advisor_factory=lambda: OpenAILinkAdvisor(settings.openai_model or ""),
+            polisher_factory=FFmpegVideoPolisher,
         )
 
     def create(self, intent: DemoIntent) -> JobRecord:
@@ -226,6 +235,23 @@ class JobManager:
         except ValidationError as error:
             raise JobIntegrityError("Grounding report is invalid") from error
 
+    def polish_plan(self, job_id: UUID) -> VideoPolishPlan:
+        job = self._require(job_id)
+        if job.status is not JobStatus.PASSED or job.video_kind != "POLISHED_VIDEO":
+            raise FileNotFoundError("video polish plan is not available")
+        manifest = self.manifest(job_id)
+        if not any(
+            record.kind is ArtifactKind.POLISH_PLAN and record.path == VideoPolishService.PLAN_PATH
+            for record in manifest.artifacts
+        ):
+            raise JobIntegrityError("video polish plan is absent from the manifest")
+        try:
+            return VideoPolishPlan.model_validate_json(
+                self._job_path(job_id, f"run/{VideoPolishService.PLAN_PATH}").read_bytes()
+            )
+        except ValidationError as error:
+            raise JobIntegrityError("Video polish plan is invalid") from error
+
     def exploration_preview_path(self, job_id: UUID) -> Path:
         job = self._require(job_id)
         if job.exploration_page_count < 1:
@@ -277,8 +303,9 @@ class JobManager:
         manifest = self.manifest(job_id)
         if manifest.run_status != DemoRunStatus.PASSED:
             raise JobIntegrityError("artifact manifest is not from a passed run")
+        expected_kind = job.video_kind or ArtifactKind.FINAL_VIDEO
         record = next(
-            (item for item in manifest.artifacts if item.kind is ArtifactKind.FINAL_VIDEO),
+            (item for item in manifest.artifacts if item.kind is expected_kind),
             None,
         )
         if record is None:
@@ -451,10 +478,26 @@ class JobManager:
             recipe = RecipeService().create(spec, bundle, manifest, run_dir)
             declarations.append(recipe.declaration)
             manifest = writer.persist(bundle, run_dir, extra_artifacts=declarations)
+            video_kind = ArtifactKind.FINAL_VIDEO
+            if self._polisher_factory is not None:
+                self._set(job_id, JobStatus.POLISHING, "Adding evidence-grounded video polish")
+                polished = VideoPolishService(self._polisher_factory()).polish(
+                    spec, bundle, composition.timeline, manifest, run_dir
+                )
+                declarations.extend(polished.declarations)
+                manifest = writer.persist(bundle, run_dir, extra_artifacts=declarations)
+                video_kind = ArtifactKind.POLISHED_VIDEO
             problems = ArtifactWriter.verify(run_dir, manifest)
             if problems:
                 raise JobIntegrityError(problems[0])
-            self._set(job_id, JobStatus.PASSED, "Verified demo video is ready")
+            self._set(
+                job_id,
+                JobStatus.PASSED,
+                "Verified polished demo video is ready"
+                if video_kind is ArtifactKind.POLISHED_VIDEO
+                else "Verified demo video is ready",
+                video_kind=video_kind,
+            )
         except Exception as error:
             self._set(job_id, JobStatus.BLOCKED, self._safe_error("Demo blocked", error))
 
@@ -582,6 +625,10 @@ class JobManager:
             return "Planning blocked: candidate DemoSpec violated the requested source origin"
         if isinstance(error, RenderUnavailableError):
             return "Rendering blocked: install FFmpeg and FFprobe"
+        if isinstance(error, (PolishUnavailableError, PolishRenderError)):
+            return "Video polish blocked: check Chromium and FFmpeg availability"
+        if isinstance(error, VideoPolishRefusedError):
+            return "Video polish blocked: verified source evidence or edit limits did not pass"
         if isinstance(error, JobIntegrityError):
             return f"{prefix}: job artifact integrity check failed"
         return f"{prefix}: {type(error).__name__}; inspect the local execution report"

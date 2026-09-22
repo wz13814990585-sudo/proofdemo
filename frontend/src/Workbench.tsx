@@ -1,12 +1,13 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 type Health = { version: string };
-type JobStatus = "QUEUED" | "EXPLORING" | "PLANNING" | "AWAITING_APPROVAL" | "EXECUTING" | "RENDERING" | "PASSED" | "FAILED" | "BLOCKED";
+type JobStatus = "QUEUED" | "EXPLORING" | "PLANNING" | "AWAITING_APPROVAL" | "EXECUTING" | "RENDERING" | "POLISHING" | "PASSED" | "FAILED" | "BLOCKED";
 type Finding = { scene_id: string; action_id: string; description: string };
 type Job = {
   id: string; status: JobStatus; message: string; spec_id: string | null;
   run_status: string | null; safety_findings: Finding[]; preview_revision: number;
   exploration_status: string | null; exploration_page_count: number; grounding_status: string | null;
+  video_kind: string | null;
 };
 type Event = {
   sequence: number; kind: string; status: string | null; message: string | null;
@@ -18,14 +19,17 @@ type AssertionResult = { assertion_id: string; status: string; reason?: string;
   evidence?: { kind: string; expected: unknown; observed: unknown } | null };
 type Report = { verification_status: string; scene_results: { scene_id: string; status: string; reason?: string; assertion_results: AssertionResult[] }[]; artifact_warnings: string[] };
 type Manifest = { artifacts: { kind: string; path: string }[] };
+type PolishPlan = { output_duration_ms: number; warnings: string[];
+  scenes: { scene_id: string; title: string; display_start_ms: number; display_end_ms: number; passed_assertions: number }[];
+  focus_cues: { scene_id: string; action_id: string; kind: string; x: number; y: number }[] };
 type Exploration = { status: string; warnings: string[]; unvisited_link_count: number;
   pages: { url: string; title: string; headings: string[]; controls: { id: string; kind: string; name: string; href: string | null; target: unknown }[] }[] };
 type Grounding = { status: string; checks: { scene_id: string; action_id: string; status: string; page_index: number | null; control_id: string | null; reason: string | null }[] };
-type Tab = "exploration" | "scenes" | "verification" | "spec";
+type Tab = "exploration" | "scenes" | "verification" | "polish" | "spec";
 
 const api = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 const terminal = new Set<JobStatus>(["PASSED", "FAILED", "BLOCKED"]);
-const stages = ["探索", "规划", "执行与验证", "渲染", "交付"];
+const stages = ["探索", "规划", "执行与验证", "基础渲染", "视频润色", "交付"];
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${api}${path}`, init);
@@ -61,12 +65,13 @@ export default function Workbench() {
   const [manifest, setManifest] = useState<Manifest | null>(null);
   const [exploration, setExploration] = useState<Exploration | null>(null);
   const [grounding, setGrounding] = useState<Grounding | null>(null);
+  const [polishPlan, setPolishPlan] = useState<PolishPlan | null>(null);
   const [events, setEvents] = useState<Event[]>([]);
   const [tab, setTab] = useState<Tab>("exploration");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const refreshing = useRef(false);
-  const fetched = useRef({ spec: "", report: "", manifest: "", exploration: "", grounding: "" });
+  const fetched = useRef({ spec: "", report: "", manifest: "", exploration: "", grounding: "", polish: "" });
 
   useEffect(() => {
     let mounted = true;
@@ -105,6 +110,10 @@ export default function Workbench() {
       if (current.status === "PASSED" && fetched.current.manifest !== id) {
         setManifest(await request<Manifest>(`/jobs/${id}/manifest`));
         fetched.current.manifest = id;
+      }
+      if (current.video_kind === "POLISHED_VIDEO" && fetched.current.polish !== id) {
+        setPolishPlan(await request<PolishPlan>(`/jobs/${id}/polish-plan`));
+        fetched.current.polish = id;
       }
     } catch (caught) {
       if (caught instanceof Error && caught.message === "Job not found") {
@@ -146,8 +155,8 @@ export default function Workbench() {
         body: JSON.stringify({ source_url: url, goal, audience: audience.trim() || null,
           language, approximate_duration_seconds: Number(duration) }),
       });
-      setSpec(null); setReport(null); setManifest(null); setExploration(null); setGrounding(null); setEvents([]);
-      fetched.current = { spec: "", report: "", manifest: "", exploration: "", grounding: "" };
+      setSpec(null); setReport(null); setManifest(null); setExploration(null); setGrounding(null); setPolishPlan(null); setEvents([]);
+      fetched.current = { spec: "", report: "", manifest: "", exploration: "", grounding: "", polish: "" };
       localStorage.setItem("proofdemo-job-id", created.id);
       setJob(created); setJobId(created.id);
     } catch (caught) {
@@ -166,11 +175,12 @@ export default function Workbench() {
   }
 
   const active = job && !terminal.has(job.status);
-  const phase = !job ? -1 : job.status === "PASSED" ? 4 : job.status === "RENDERING" ? 3
+  const phase = !job ? -1 : job.status === "PASSED" ? 5 : job.status === "POLISHING" ? 4
+    : job.status === "RENDERING" ? 3
     : job.status === "EXECUTING" ? 2 : job.status === "PLANNING" || job.status === "AWAITING_APPROVAL" ? 1
       : job.status === "QUEUED" ? -1 : 0;
   const videoReady = job?.status === "PASSED" && report?.verification_status === "PASSED"
-    && manifest?.artifacts.some((item) => item.kind === "FINAL_VIDEO");
+    && manifest?.artifacts.some((item) => item.kind === (job?.video_kind ?? "FINAL_VIDEO"));
 
   return <main className="app-shell">
     <nav className="topbar" aria-label="ProofDemo">
@@ -182,7 +192,7 @@ export default function Workbench() {
       <div><p className="eyebrow">VERIFIED PRODUCT DEMOS</p>
         <h1>从一个想法，到有证据的演示。</h1>
         <p>输入产品地址和目标。ProofDemo 规划场景、操作浏览器、验证结果，并交付视频。</p></div>
-      <span className="mode-pill">LOCAL STUDIO · STAGE 12</span>
+      <span className="mode-pill">LOCAL STUDIO · STAGE 13</span>
     </header>
     <div className="workspace">
       <aside className="panel control-panel">
@@ -243,9 +253,9 @@ export default function Workbench() {
         </section>
         <section className="panel details-panel">
           <div className="panel-title"><span>04</span><h2>计划与证据</h2></div>
-          <div className="tabs" role="tablist" aria-label="演示详情">{(["exploration", "scenes", "verification", "spec"] as Tab[])
+          <div className="tabs" role="tablist" aria-label="演示详情">{(["exploration", "scenes", "verification", "polish", "spec"] as Tab[])
             .map((item) => <button key={item} type="button" role="tab" aria-selected={tab === item}
-              onClick={() => setTab(item)}>{item === "exploration" ? "探索" : item === "scenes" ? "场景" : item === "verification" ? "验证" : "DemoSpec"}</button>)}</div>
+              onClick={() => setTab(item)}>{item === "exploration" ? "探索" : item === "scenes" ? "场景" : item === "verification" ? "验证" : item === "polish" ? "视频编辑" : "DemoSpec"}</button>)}</div>
           {tab === "exploration" && <div className="exploration-list">{exploration ? <>
             <p>只读探索：<strong>{exploration.status}</strong> · 已观察 {exploration.pages.length} 页 · 未访问安全链接 {exploration.unvisited_link_count} 个</p>
             {exploration.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}
@@ -276,11 +286,20 @@ export default function Workbench() {
                 {item.reason && <small>{item.reason}</small>}</div>)}
             </article>)}{report.artifact_warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}
           </> : <p className="empty-copy">执行结束后，这里会展示逐场景的验证结果。</p>}</div>}
+          {tab === "polish" && <div className="polish-list">{polishPlan ? <>
+            <p>已验证润色版 · 约 {(polishPlan.output_duration_ms / 1000).toFixed(1)} 秒 · {polishPlan.focus_cues.length} 个真实目标镜头</p>
+            {polishPlan.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}
+            {polishPlan.scenes.map((scene) => <article className="scene-card" key={scene.scene_id}>
+              <small>{scene.scene_id}</small><h3>{scene.title}</h3>
+              <p>{(scene.display_start_ms / 1000).toFixed(1)}–{(scene.display_end_ms / 1000).toFixed(1)} 秒 · {scene.passed_assertions} 项断言通过</p>
+              <span>{polishPlan.focus_cues.filter((cue) => cue.scene_id === scene.scene_id).map((cue) => `${cue.kind} · ${cue.action_id}`).join(" / ") || "静态镜头"}</span>
+            </article>)}
+          </> : <p className="empty-copy">润色完成后，这里会展示字幕、镜头线索和转场计划。</p>}</div>}
           {tab === "spec" && (spec ? <pre className="spec-json">{JSON.stringify(spec, null, 2)}</pre>
             : <p className="empty-copy">尚无 DemoSpec。</p>)}
         </section>
         {videoReady && job && <section className="panel delivery-panel">
-          <div className="panel-title"><span>05</span><h2>演示视频</h2><small>✓ 已验证</small></div>
+          <div className="panel-title"><span>05</span><h2>演示视频</h2><small>✓ 已验证 · {job.video_kind === "POLISHED_VIDEO" ? "润色版" : "基础版"}</small></div>
           <video controls playsInline src={`${api}/jobs/${job.id}/video`} />
           <a href={`${api}/jobs/${job.id}/video`} download={`proofdemo-${job.id}.mp4`}>下载 MP4 ↗</a>
         </section>}

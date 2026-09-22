@@ -31,6 +31,7 @@ from proofdemo.ports.browser import (
 )
 from proofdemo.ports.planner import PlannerCandidate, PlannerUnavailableError
 from proofdemo.ports.render import MediaInfo, RenderSettings, RenderUnavailableError
+from proofdemo.ports.video_polish import PolishRenderError
 
 SOURCE = "https://demo.example.test/"
 
@@ -156,6 +157,14 @@ class MismatchBrowser(Browser):
 class UnavailableRenderer(Renderer):
     def probe(self, path: Path) -> MediaInfo:
         raise RenderUnavailableError("FFmpeg unavailable")
+
+
+class FailingPolisher:
+    def probe(self, path: Path) -> MediaInfo:
+        raise PolishRenderError("polish tool unavailable")
+
+    def render(self, source, output, plan, artifact_dir) -> tuple[str, ...]:  # type: ignore[no-untyped-def]
+        raise AssertionError("render must not start")
 
 
 def manager(root: Path, spec: DemoSpec) -> JobManager:
@@ -339,6 +348,62 @@ def test_unavailable_renderer_preserves_verified_report_but_blocks_delivery(
     assert jobs.report(created.id).verification_status == "PASSED"
     assert "FFmpeg" in jobs.get(created.id).message  # type: ignore[union-attr]
     assert not (tmp_path / str(created.id) / "run" / "demo.mp4").exists()
+
+
+def test_polish_failure_keeps_verified_source_but_blocks_product_delivery(
+    tmp_path: Path,
+) -> None:
+    jobs = JobManager(
+        tmp_path,
+        planner_factory=lambda: Planner(make_spec()),
+        browser_factory=Browser,
+        renderer_factory=Renderer,
+        polisher_factory=FailingPolisher,
+    )
+    created = jobs.create(DemoIntent(source_url=SOURCE, goal="Create a task"))
+
+    wait_for(jobs, created.id, JobStatus.BLOCKED)
+
+    assert jobs.report(created.id).verification_status == "PASSED"
+    assert (tmp_path / str(created.id) / "run" / "demo.mp4").exists()
+    assert not (tmp_path / str(created.id) / "run" / "polished_demo.mp4").exists()
+    with pytest.raises(JobIntegrityError, match="no verified final video"):
+        jobs.video_path(created.id)
+
+
+@pytest.mark.parametrize("target", ["demo.mp4", "timeline.json"])
+def test_polish_refuses_source_or_timeline_tampering(tmp_path: Path, target: str) -> None:
+    def tamper_then_polish() -> FailingPolisher:
+        job_dir = next(path for path in tmp_path.iterdir() if path.is_dir())
+        (job_dir / "run" / target).write_bytes(b"tampered")
+        return FailingPolisher()
+
+    jobs = JobManager(
+        tmp_path,
+        planner_factory=lambda: Planner(make_spec()),
+        browser_factory=Browser,
+        renderer_factory=Renderer,
+        polisher_factory=tamper_then_polish,
+    )
+    created = jobs.create(DemoIntent(source_url=SOURCE, goal="Create a task"))
+
+    wait_for(jobs, created.id, JobStatus.BLOCKED)
+    assert not (tmp_path / str(created.id) / "run" / "polished_demo.mp4").exists()
+
+
+def test_interrupted_polish_recovers_as_blocked(tmp_path: Path) -> None:
+    first = manager(tmp_path, make_spec(action="Delete project"))
+    created = first.create(DemoIntent(source_url=SOURCE, goal="Demonstrate deletion"))
+    wait_for(first, created.id, JobStatus.AWAITING_APPROVAL)
+    path = tmp_path / str(created.id) / "job.json"
+    snapshot = json.loads(path.read_text(encoding="utf-8"))
+    snapshot["status"] = "POLISHING"
+    path.write_text(json.dumps(snapshot), encoding="utf-8")
+
+    recovered = manager(tmp_path, make_spec())
+
+    assert recovered.get(created.id).status is JobStatus.BLOCKED  # type: ignore[union-attr]
+    assert "restart" in recovered.get(created.id).message  # type: ignore[union-attr]
 
 
 def test_tampered_video_cannot_be_served_as_verified(tmp_path: Path) -> None:
