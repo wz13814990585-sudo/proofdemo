@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import UTC, datetime
 from enum import StrEnum
+from hashlib import sha256
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from threading import Lock, Thread
@@ -13,10 +14,14 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from proofdemo.adapters.ffmpeg_render import FFmpegRenderAdapter
+from proofdemo.adapters.openai_exploration import OpenAILinkAdvisor
 from proofdemo.adapters.openai_planner import OpenAIPlanner
 from proofdemo.adapters.playwright_browser import PlaywrightBrowser
+from proofdemo.adapters.playwright_explorer import PlaywrightExplorer
 from proofdemo.application.artifacts import ArtifactKind, ArtifactManifest, ArtifactWriter
-from proofdemo.application.execution import ExecutionReport, ExecutionService
+from proofdemo.application.execution import ExecutionReport, ExecutionService, safe_artifact_path
+from proofdemo.application.exploration import ExplorationService
+from proofdemo.application.grounding import GroundingReport, GroundingService
 from proofdemo.application.planning import InvalidPlannerCandidate, PlanningService
 from proofdemo.application.recipes import RecipeService
 from proofdemo.application.rendering import CompositionService
@@ -25,15 +30,18 @@ from proofdemo.application.trace import TraceEvent
 from proofdemo.config import Settings
 from proofdemo.domain.demo_run import DemoRunStatus
 from proofdemo.domain.demo_spec import DemoSpec
+from proofdemo.domain.exploration import ExplorationReport, ExplorationStatus, PageObservation
 from proofdemo.domain.planning import DemoIntent
 from proofdemo.domain.recipe import demo_spec_sha256
 from proofdemo.ports.browser import BrowserPort
+from proofdemo.ports.explorer import ExplorerPort, LinkAdvisorPort
 from proofdemo.ports.planner import PlannerPort, PlannerUnavailableError
 from proofdemo.ports.render import RenderPort, RenderUnavailableError
 
 
 class JobStatus(StrEnum):
     QUEUED = "QUEUED"
+    EXPLORING = "EXPLORING"
     PLANNING = "PLANNING"
     AWAITING_APPROVAL = "AWAITING_APPROVAL"
     EXECUTING = "EXECUTING"
@@ -62,6 +70,12 @@ class JobRecord(BaseModel):
     safety_decision: SafetyDecision | None = None
     safety_findings: tuple[SafetyFinding, ...] = ()
     preview_revision: int = 0
+    exploration_status: ExplorationStatus | None = None
+    exploration_page_count: int = 0
+    exploration_preview_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    exploration_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    grounding_status: str | None = None
+    grounding_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
 
 
 class JobEvent(BaseModel):
@@ -101,12 +115,18 @@ class JobManager:
         planner_factory: Callable[[], PlannerPort],
         browser_factory: Callable[[], BrowserPort] = PlaywrightBrowser,
         renderer_factory: Callable[[], RenderPort] = FFmpegRenderAdapter,
+        explorer_factory: Callable[[], ExplorerPort] | None = None,
+        advisor_factory: Callable[[], LinkAdvisorPort] | None = None,
     ) -> None:
         self._root = root.resolve()
         self._root.mkdir(parents=True, exist_ok=True)
         self._planner_factory = planner_factory
         self._browser_factory = browser_factory
         self._renderer_factory = renderer_factory
+        self._explorer_factory = explorer_factory
+        self._advisor_factory = advisor_factory
+        if (explorer_factory is None) != (advisor_factory is None):
+            raise ValueError("explorer and advisor must be configured together")
         self._lock = Lock()
         self._jobs: dict[UUID, JobRecord] = {}
         self._events: dict[UUID, list[JobEvent]] = {}
@@ -117,6 +137,8 @@ class JobManager:
         return cls(
             settings.job_root,
             planner_factory=lambda: OpenAIPlanner(settings.openai_model or ""),
+            explorer_factory=PlaywrightExplorer,
+            advisor_factory=lambda: OpenAILinkAdvisor(settings.openai_model or ""),
         )
 
     def create(self, intent: DemoIntent) -> JobRecord:
@@ -136,7 +158,7 @@ class JobManager:
             self._events[job.id] = []
             self._save(job)
             self._append_event(job.id, "JOB_STATUS", status=job.status, message=job.message)
-        Thread(target=self._plan, args=(job.id, intent), daemon=True).start()
+        Thread(target=self._prepare, args=(job.id, intent), daemon=True).start()
         return job
 
     def get(self, job_id: UUID) -> JobRecord | None:
@@ -171,6 +193,52 @@ class JobManager:
         if job.spec_sha256 is not None and demo_spec_sha256(spec) != job.spec_sha256:
             raise JobIntegrityError("DemoSpec changed after safety review")
         return spec
+
+    def exploration(self, job_id: UUID) -> ExplorationReport:
+        job = self._require(job_id)
+        try:
+            contents = self._job_path(job_id, ExplorationService.REPORT_PATH).read_bytes()
+            if job.exploration_sha256 and sha256(contents).hexdigest() != job.exploration_sha256:
+                raise JobIntegrityError("Exploration report changed after observation")
+            report = ExplorationReport.model_validate_json(contents)
+            for page in report.pages:
+                if page.screenshot_path is None or page.screenshot_sha256 is None:
+                    raise JobIntegrityError("Exploration screenshot evidence is missing")
+                path = safe_artifact_path(self._job_dir(job_id), page.screenshot_path)
+                if (
+                    not path.is_file()
+                    or sha256(path.read_bytes()).hexdigest() != page.screenshot_sha256
+                ):
+                    raise JobIntegrityError("Exploration screenshot changed after observation")
+            return report
+        except ValidationError as error:
+            raise JobIntegrityError("Exploration report is invalid") from error
+        except ValueError as error:
+            raise JobIntegrityError("Exploration screenshot path is invalid") from error
+
+    def grounding(self, job_id: UUID) -> GroundingReport:
+        job = self._require(job_id)
+        try:
+            contents = self._job_path(job_id, "grounding_report.json").read_bytes()
+            if job.grounding_sha256 and sha256(contents).hexdigest() != job.grounding_sha256:
+                raise JobIntegrityError("Grounding report changed after safety review")
+            return GroundingReport.model_validate_json(contents)
+        except ValidationError as error:
+            raise JobIntegrityError("Grounding report is invalid") from error
+
+    def exploration_preview_path(self, job_id: UUID) -> Path:
+        job = self._require(job_id)
+        if job.exploration_page_count < 1:
+            raise FileNotFoundError("no exploration preview")
+        path = self._job_path(job_id, f"exploration/page-{job.exploration_page_count}.png")
+        if not path.is_file():
+            raise FileNotFoundError(path)
+        if (
+            job.exploration_preview_sha256 is None
+            or sha256(path.read_bytes()).hexdigest() != job.exploration_preview_sha256
+        ):
+            raise JobIntegrityError("Exploration preview changed after observation")
+        return path
 
     def report(self, job_id: UUID) -> ExecutionReport:
         self._require(job_id)
@@ -217,14 +285,93 @@ class JobManager:
             raise JobIntegrityError("manifest has no final video")
         return self._job_path(job_id, f"run/{record.path}")
 
-    def _plan(self, job_id: UUID, intent: DemoIntent) -> None:
+    def _prepare(self, job_id: UUID, intent: DemoIntent) -> None:
+        exploration: ExplorationReport | None = None
+        planner: PlannerPort | None = None
+        if self._explorer_factory is not None and self._advisor_factory is not None:
+            self._set(job_id, JobStatus.EXPLORING, "Observing authorized product pages")
+            try:
+                planner = self._planner_factory()
+                advisor = self._advisor_factory()
+                exploration = ExplorationService(
+                    self._explorer_factory(),
+                    advisor,
+                    observation_observer=lambda count, page: self._record_observation(
+                        job_id, count, page
+                    ),
+                ).explore(intent, self._job_dir(job_id))
+                report_path = ExplorationService.write(exploration, self._job_dir(job_id))
+                self._set(
+                    job_id,
+                    JobStatus.EXPLORING,
+                    f"Observed {len(exploration.pages)} page(s): {exploration.status}",
+                    exploration_status=exploration.status,
+                    exploration_page_count=len(exploration.pages),
+                    exploration_sha256=sha256(report_path.read_bytes()).hexdigest(),
+                )
+                if exploration.status is ExplorationStatus.BLOCKED or not exploration.pages:
+                    self._set(job_id, JobStatus.BLOCKED, "Exploration could not ground a plan")
+                    return
+            except Exception as error:
+                self._set(job_id, JobStatus.BLOCKED, self._safe_error("Exploration blocked", error))
+                return
+        self._plan(job_id, intent, exploration, planner)
+
+    def _record_observation(self, job_id: UUID, count: int, page: PageObservation) -> None:
+        with self._lock:
+            job = self._jobs[job_id]
+            self._save_and_replace(
+                job.model_copy(
+                    update={
+                        "exploration_page_count": count,
+                        "exploration_preview_sha256": page.screenshot_sha256,
+                    }
+                )
+            )
+            self._append_event(
+                job_id,
+                "PAGE_OBSERVED",
+                status="OBSERVED",
+                message=f"Observed page {count}",
+            )
+
+    def _plan(
+        self,
+        job_id: UUID,
+        intent: DemoIntent,
+        exploration: ExplorationReport | None,
+        planner: PlannerPort | None,
+    ) -> None:
         self._set(job_id, JobStatus.PLANNING, "Creating a reviewable DemoSpec")
         try:
-            result = PlanningService(self._planner_factory()).plan(intent)
+            result = PlanningService(planner or self._planner_factory()).plan(intent, exploration)
             self._atomic_text(
                 self._job_path(job_id, "demo_spec.json"),
                 result.spec.model_dump_json(indent=2) + "\n",
             )
+            if exploration is not None:
+                grounding = GroundingService.assess(result.spec, exploration)
+                grounding_path = self._job_path(job_id, "grounding_report.json")
+                self._atomic_text(
+                    grounding_path,
+                    grounding.model_dump_json(indent=2) + "\n",
+                )
+                self._set(
+                    job_id,
+                    JobStatus.PLANNING,
+                    "Checking candidate against observed controls",
+                    spec_id=result.spec.id,
+                    spec_sha256=demo_spec_sha256(result.spec),
+                    grounding_status=grounding.status,
+                    grounding_sha256=sha256(grounding_path.read_bytes()).hexdigest(),
+                )
+                if grounding.status == "BLOCKED":
+                    self._set(
+                        job_id,
+                        JobStatus.BLOCKED,
+                        "Plan contains actions not grounded in observed pages",
+                    )
+                    return
             assessment = SafetyService.assess(result.spec, approval_acknowledged=False)
             SafetyService.write(assessment, self._job_path(job_id, "run"))
             self._set(
@@ -255,6 +402,15 @@ class JobManager:
             expected_hash = self._require(job_id).spec_sha256
             if expected_hash is None or demo_spec_sha256(spec) != expected_hash:
                 raise JobIntegrityError("DemoSpec changed after safety review")
+            if self._require(job_id).grounding_sha256 is not None:
+                exploration = self.exploration(job_id)
+                original_grounding = self.grounding(job_id)
+                current_grounding = GroundingService.assess(spec, exploration)
+                if (
+                    current_grounding != original_grounding
+                    or current_grounding.status != "GROUNDED"
+                ):
+                    raise JobIntegrityError("Plan no longer matches exploration evidence")
             run_dir = self._job_path(job_id, "run")
             assessment = SafetyService.assess(spec, approval_acknowledged=approved)
             safety_declaration = SafetyService.write(assessment, run_dir)

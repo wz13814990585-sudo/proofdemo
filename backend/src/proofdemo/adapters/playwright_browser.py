@@ -14,6 +14,7 @@ from playwright.sync_api import (
     Locator,
     Page,
     Playwright,
+    Route,
     Video,
     sync_playwright,
 )
@@ -68,12 +69,14 @@ class PlaywrightBrowser:
         self._downloads: list[Download] = []
         self._logs: list[BrowserLogEntry] = []
         self._recording_target: Path | None = None
+        self._blocked_navigation = False
 
     def open(self, source_url: str, *, recording_dir: Path | None = None) -> None:
         self._allowed_origin = _origin(source_url)
         self._downloads = []
         self._logs = []
         self._recording_target = None
+        self._blocked_navigation = False
         try:
             self._playwright = sync_playwright().start()
             self._browser = self._playwright.chromium.launch(headless=self._headless)
@@ -93,6 +96,7 @@ class PlaywrightBrowser:
                     record_video_dir=str(recording_dir),
                     record_video_size={"width": 1280, "height": 720},
                 )
+            self._context.route("**/*", self._route_navigation)
             self._page = self._context.new_page()
             self._page.on("download", lambda download: self._downloads.append(download))
             self._page.on(
@@ -113,8 +117,11 @@ class PlaywrightBrowser:
         if _origin(url) != self._allowed_origin:
             raise BrowserActionError("navigation attempted to leave the source origin")
         page = self._require_page()
+        self._blocked_navigation = False
         try:
             page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+            if self._blocked_navigation:
+                raise BrowserActionError("navigation was blocked by the same-origin policy")
             if _origin(page.url) != self._allowed_origin:
                 raise BrowserActionError("navigation redirected outside the source origin")
         except BrowserActionError:
@@ -125,14 +132,44 @@ class PlaywrightBrowser:
             raise BrowserActionError(f"navigation failed: {error}") from error
 
     def click(self, target: ElementTarget, *, timeout_ms: int) -> None:
+        self._blocked_navigation = False
         try:
             self._locator(target).click(timeout=timeout_ms)
+            if self._blocked_navigation:
+                raise BrowserActionError("click navigation was blocked by the same-origin policy")
+            if (
+                self._allowed_origin is not None
+                and _origin(self._require_page().url) != self._allowed_origin
+            ):
+                raise BrowserActionError("click navigation left the source origin")
+        except BrowserActionError:
+            raise
         except PlaywrightTimeoutError as error:
             raise BrowserActionError(
                 f"click target was not actionable within {timeout_ms} ms"
             ) from error
         except PlaywrightError as error:
             raise BrowserActionError(f"click failed: {error}") from error
+
+    def _route_navigation(self, route: Route) -> None:
+        request = route.request
+        if not request.is_navigation_request():
+            route.continue_()
+            return
+        try:
+            if _origin(request.url) != self._allowed_origin:
+                self._blocked_navigation = True
+                route.abort()
+                return
+            response = route.fetch(max_redirects=0, timeout=15_000)
+            if 300 <= response.status < 400:
+                self._blocked_navigation = True
+                route.abort()
+            else:
+                route.fulfill(response=response)
+        except (BrowserActionError, PlaywrightError):
+            self._blocked_navigation = True
+            route.abort()
 
     def fill(self, target: ElementTarget, value: str, *, timeout_ms: int) -> None:
         try:
