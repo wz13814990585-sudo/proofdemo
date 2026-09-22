@@ -18,11 +18,11 @@ Application orchestration
 Domain  Adapters  Persistence
 ```
 
-Through Stage 5, the application layer contains a bounded planning service plus
+Through Stage 6, the application layer contains a bounded planning service plus
 focused deterministic execution, verification, tracing, artifact-persistence,
-and composition services. Browser, render, and model-provider mechanics sit
+composition, and narration services. Browser, media, and provider mechanics sit
 behind application-owned ports implemented by Playwright Chromium, FFmpeg, and
-an optional OpenAI adapter.
+optional OpenAI adapters.
 
 ## Technology Choices
 
@@ -39,6 +39,8 @@ an optional OpenAI adapter.
   and H.264 encoding behind a render port. ProofDemo owns timeline policy.
 - **OpenAI Responses API** provides optional structured planning behind a
   planner port, with an explicit model, no tools, and no stored conversation.
+- **OpenAI Speech API** optionally synthesizes approved cue text as WAV behind a
+  speech port. It does not receive assertion payloads or author narration.
 
 ## Repository Layout
 
@@ -79,7 +81,9 @@ rendering frameworks. Adapters implement application-defined boundaries.
 | Video composition | deterministic render adapter |
 | Intent-to-DemoSpec planning | model behind a narrow boundary |
 | Ambiguous UI resolution | model-assisted, evidence recorded |
-| Narration draft | model behind a narrow boundary |
+| Narration claim text | deterministic passed-assertion templates |
+| Speech synthesis | provider behind a narrow boundary |
+| Audio alignment | deterministic timeline policy and FFmpeg adapter |
 
 ## DemoSpec Execution Contract
 
@@ -186,9 +190,30 @@ and one encoding thread for repeatability. FFprobe validates dimensions, frame
 rate, codec, and duration after render. `timeline.json` and `demo.mp4` are then
 hashed into the final artifact manifest.
 
+## Narration and Audio Boundary
+
+`NarrationService` accepts only a verified `PASSED` bundle plus an
+integrity-checked Stage 4 manifest and its exact persisted timeline. It selects
+one passed assertion per scene by deterministic priority and maps its type to a
+short project-owned phrase. `validate_narration_grounding` recomputes the
+allowed phrase, assertion reference, scene identity, and timeline bounds; free
+model-authored success text is not accepted.
+
+`SpeechPort` receives only approved cue text. The OpenAI adapter requires an
+explicit model and voice, requests PCM WAV, publishes files atomically, and
+returns no authority over evidence or timing. The first cue includes a spoken
+AI-voice disclosure.
+
+Each WAV is probed before use. Speech can be accelerated by at most 2× to fit
+its own verified scene; longer speech is rejected instead of truncated or moved.
+`AudioMixPort` aligns cues, pads silence, and preserves the Stage 4 H.264 stream
+while adding AAC audio. The narration track, correlated WAV files, and narrated
+MP4 are included in the integrity manifest.
+
 ## DemoRun Lifecycle
 
-Stage 5 preserves this legal state graph; planning and rendering cannot change it:
+Stage 6 preserves this legal state graph; planning, rendering, and narration
+cannot change it:
 
 ```text
 CREATED -> VALIDATED -> RUNNING -> EXECUTED -> PASSED
@@ -218,12 +243,13 @@ application-state hook accepts a validated key as data rather than code.
 Diagnostic logs are bounded and sanitized, and fill values are not copied into
 action trace payloads. Provider credentials are read only from environment
 configuration and are never admitted to DemoIntent, DemoSpec, traces, or
-artifacts. Stage 5 does not support browser credential injection.
+artifacts. Speech receives only fixed, non-sensitive phrases. Stage 6 does not
+support browser credential injection.
 
 ## Deliberate Deferrals
 
-There are no model tools, autonomous exploration, locator repair, editorial
-transitions, zooms, overlays, captions, narration, audio, database, queue,
-recipe, partial rerender, or cloud artifact store through Stage 5. Those are
-introduced only when their roadmap stage supplies executable acceptance
-criteria.
+There are no model tools, model-written narration, autonomous exploration,
+locator repair, editorial transitions, zooms, overlays, captions, music,
+database, queue, recipe, partial rerender, or cloud artifact store through
+Stage 6. Those are introduced only when their roadmap stage supplies executable
+acceptance criteria.

@@ -1,5 +1,12 @@
 """Application-owned ports implemented by infrastructure adapters."""
 
+from proofdemo.ports.audio import (
+    AudioInfo,
+    AudioMixCue,
+    AudioMixError,
+    AudioMixPort,
+    AudioUnavailableError,
+)
 from proofdemo.ports.browser import (
     AppStateObservation,
     BrowserActionError,
@@ -22,9 +29,20 @@ from proofdemo.ports.render import (
     RenderSettings,
     RenderUnavailableError,
 )
+from proofdemo.ports.speech import (
+    SpeechDescriptor,
+    SpeechPort,
+    SpeechSynthesisError,
+    SpeechUnavailableError,
+)
 
 __all__ = [
     "AppStateObservation",
+    "AudioInfo",
+    "AudioMixCue",
+    "AudioMixError",
+    "AudioMixPort",
+    "AudioUnavailableError",
     "BrowserActionError",
     "BrowserLogEntry",
     "BrowserPort",
@@ -40,4 +58,8 @@ __all__ = [
     "RenderPort",
     "RenderSettings",
     "RenderUnavailableError",
+    "SpeechDescriptor",
+    "SpeechPort",
+    "SpeechSynthesisError",
+    "SpeechUnavailableError",
 ]

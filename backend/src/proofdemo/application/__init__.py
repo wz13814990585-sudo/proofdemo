@@ -7,6 +7,12 @@ from proofdemo.application.execution import (
     ExecutionReport,
     ExecutionService,
 )
+from proofdemo.application.narration import (
+    NarrationCue,
+    NarrationResult,
+    NarrationService,
+    NarrationTrack,
+)
 from proofdemo.application.planning import PlanningResult, PlanningService
 from proofdemo.application.rendering import (
     CompositionResult,
@@ -35,6 +41,10 @@ __all__ = [
     "ExecutionBundle",
     "ExecutionReport",
     "ExecutionService",
+    "NarrationCue",
+    "NarrationResult",
+    "NarrationService",
+    "NarrationTrack",
     "OutcomeStatus",
     "PlanningResult",
     "PlanningService",

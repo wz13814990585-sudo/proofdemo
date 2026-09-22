@@ -1,55 +1,63 @@
-# Current Stage — Stage 5: Bounded Demo Planner
+# Current Stage — Stage 6: Grounded Narration and TTS
 
 ## Goal
 
-Turn a URL and natural-language demo intent into a reviewable DemoSpec `1.2`
-candidate through one bounded structured-output model call. The planner may
-propose; deterministic domain validation and the existing executor/verifier
-remain authoritative.
+Create an AI-voiced demo only from integrity-checked, verified scene evidence.
+Narration text remains deterministically grounded in passed assertions; a speech
+provider may synthesize that approved text but cannot create product claims.
 
 ## Required Outcomes
 
-1. A strict `DemoIntent` model captures source URL, goal, audience, language,
-   and optional target duration without credentials or executable content.
-2. `PlanningService` depends on a narrow `PlannerPort`, never on a provider SDK.
-3. The OpenAI adapter uses the Responses API structured-output parser with the
-   authoritative Pydantic DemoSpec model, no tools, no browsing, no conversation
-   persistence, and an explicit configured model name.
-4. Provider output is revalidated by ProofDemo and rejected if its source URL
-   differs from the requested origin, even when its JSON shape is valid.
-5. Planning errors distinguish unavailable configuration/provider, model
-   refusal/incomplete output, and invalid candidate contracts without exposing
-   API keys or raw provider payloads.
-6. `proofdemo plan URL --goal ... --output ...` atomically writes a candidate
-   JSON spec for human review. It does not execute the candidate automatically.
-7. The standard manually authored `proofdemo run` path remains fully usable
-   without an API key or planner model.
-8. The model name comes from `--model` or `PROOFDEMO_OPENAI_MODEL`; ProofDemo
-   does not silently substitute a current/latest model.
-9. Unit/contract tests use a fake planner. A provider-adapter test uses a fake
-   SDK client and makes no network request.
-10. Existing deterministic execution, verification, capture, rendering, lint,
-    type, and frontend checks continue to pass.
+1. Narration accepts only a `PASSED` execution bundle, a valid artifact
+   manifest, and the exact Stage 4 timeline and silent video recorded there.
+2. Every narration cue maps to one verified timeline scene and cites at least
+   one `PASSED` assertion ID from that scene.
+3. Spoken success claims are deterministic templates derived from assertion
+   evidence. No model is allowed to invent, rewrite, or expand product claims.
+4. The first cue contains a concise disclosure that the voice is AI-generated,
+   and `narration.json` records the disclosure and provider provenance.
+5. `SpeechPort` and `AudioMixPort` isolate synthesis and media mechanics from
+   evidence policy. Provider and FFmpeg SDK/process details stay in adapters.
+6. The OpenAI speech adapter requires explicit model and voice configuration,
+   requests WAV, atomically publishes output, and hides raw provider errors.
+7. Per-scene WAV files are probed before mixing. Speech may be accelerated only
+   within a bounded intelligibility limit; audio that cannot fit its verified
+   scene is rejected instead of truncated or moved to another scene.
+8. FFmpeg aligns cues to their scene ranges and produces `demo-narrated.mp4`
+   with the unchanged H.264 video stream and an AAC audio stream.
+9. `narration.json`, per-scene WAV files, and the narrated MP4 are integrity
+   recorded in the artifact manifest with scene/assertion correlation.
+10. `proofdemo run` remains fully usable without API credentials. Narration is
+    opt-in through explicit TTS model and voice settings.
+11. Tests use fake speech clients/ports and make no billable network requests;
+    a real local FFmpeg test verifies timing and audio/video stream properties.
+12. Existing planning, execution, verification, capture, render, lint, type,
+    and frontend checks continue to pass.
 
 ## Acceptance Criteria
 
-A fake provider planning the Todo goal must produce a valid DemoSpec `1.2` that
-round-trips through JSON, preserves the requested origin, contains stable IDs,
-starts with `goto`, and has at least one assertion per scene. Tests must also
-prove rejection of cross-origin candidates, provider refusal, missing model
-configuration, embedded URL credentials, and accidental automatic execution.
+For a verified fixture with sufficient scene duration, narration must produce a
+versioned evidence-linked script, one valid WAV per scene, and a 1920×1080,
+30-fps H.264/AAC MP4 whose duration remains within one frame of the silent
+video. A cue must begin inside its correlated scene and may not exceed that
+scene after bounded tempo adjustment.
 
-Live OpenAI planning is optional in local validation because it requires the
-user's `OPENAI_API_KEY`, account access, and explicitly selected model. The
+Tests must prove refusal of failed runs, tampered Stage 4 artifacts, missing or
+mismatched timeline scenes, ungrounded evidence references, overlong speech,
+missing provider configuration, provider failure, and accidental TTS use when
+the user did not opt in.
+
+Live speech generation is optional in local validation because it requires the
+user's `OPENAI_API_KEY`, account access, and explicit model/voice choices. The
 checked-in suite must never make a billable network request.
 
 ## Not Included
 
-- autonomous exploration, screenshots as model input, DOM inspection, tool
-  calls, locator repair, or retries;
-- automatic execution of a newly planned candidate without review;
-- narration, TTS, audio, recipe persistence, change detection, queues, or
-  production provider routing.
+- model-written narration, captions, music, sound effects, transitions, zooms,
+  or visual editorial changes;
+- autonomous exploration, locator repair, scene repair, or reruns;
+- DemoRecipe persistence, change detection, partial rerender, queues, workers,
+  cloud media storage, or production provider routing.
 
 ## Completion Status
 

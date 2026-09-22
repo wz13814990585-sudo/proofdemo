@@ -13,6 +13,8 @@ ENVIRONMENT_VARIABLES = (
     "PROOFDEMO_API_PORT",
     "PROOFDEMO_FRONTEND_ORIGIN",
     "PROOFDEMO_OPENAI_MODEL",
+    "PROOFDEMO_OPENAI_TTS_MODEL",
+    "PROOFDEMO_OPENAI_TTS_VOICE",
 )
 
 
@@ -39,6 +41,18 @@ def test_settings_read_explicit_planner_model(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setenv("PROOFDEMO_OPENAI_MODEL", "account-supported-model")
 
     assert Settings.from_env().openai_model == "account-supported-model"
+
+
+def test_settings_read_explicit_speech_model_and_voice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PROOFDEMO_OPENAI_TTS_MODEL", "account-supported-tts")
+    monkeypatch.setenv("PROOFDEMO_OPENAI_TTS_VOICE", "approved-voice")
+
+    settings = Settings.from_env()
+
+    assert settings.openai_tts_model == "account-supported-tts"
+    assert settings.openai_tts_voice == "approved-voice"
 
 
 def test_settings_load_dotenv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

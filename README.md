@@ -10,10 +10,11 @@ The product flow is:
 Intent -> Plan -> Execute -> Verify -> Capture -> Render
 ```
 
-This repository currently implements **Stage 5**: a bounded, optional planner
-plus deterministic Playwright execution, evidence-backed verification,
-correlated local artifacts, and basic 1080p video composition. A model may
-propose a reviewable DemoSpec, but it cannot execute it or claim success. See
+This repository currently implements **Stage 6**: a bounded optional planner,
+deterministic execution and verification, correlated artifacts, 1080p video,
+and opt-in evidence-grounded narration. A model may propose a reviewable
+DemoSpec, but it cannot execute it or claim success; spoken product claims are
+fixed templates derived from passed assertions. See
 [the current stage](docs/CURRENT_STAGE.md) for the exact scope.
 
 ## Prerequisites
@@ -41,6 +42,12 @@ The deterministic pipeline does not require an API key. To use the optional
 planner, set `OPENAI_API_KEY` in the environment and select an explicit model
 with `PROOFDEMO_OPENAI_MODEL` or `--model`; ProofDemo never selects a floating
 default model for you.
+
+Opt-in narration additionally requires an explicit
+`PROOFDEMO_OPENAI_TTS_MODEL` and `PROOFDEMO_OPENAI_TTS_VOICE` (or matching CLI
+flags). The speech provider receives only already-approved narration text. The
+[OpenAI text-to-speech guide](https://developers.openai.com/api/docs/guides/text-to-speech)
+documents the WAV speech endpoint used by the adapter.
 
 Start the API:
 
@@ -100,6 +107,19 @@ Then execute the checked-in DemoSpec in another terminal:
 proofdemo run examples/demo_spec.json --artifacts artifacts/todo-demo
 ```
 
+To add AI speech after the same run verifies successfully:
+
+```bash
+proofdemo run examples/demo_spec.json \
+  --artifacts artifacts/todo-demo \
+  --narrate \
+  --tts-model YOUR_EXPLICIT_TTS_MODEL \
+  --voice YOUR_EXPLICIT_VOICE
+```
+
+Narration is never implied by configured credentials; `--narrate` is required.
+The first cue discloses that the voice is AI-generated.
+
 A successful Stage 4 run exits `0`, transitions through `EXECUTED` to `PASSED`,
 and writes `execution_report.json`, `trace.jsonl`, `browser.log.jsonl`,
 `browser.webm`, `timeline.json`, `demo.mp4`, `artifact_manifest.json`, the
@@ -107,6 +127,10 @@ requested screenshot, and correlated evidence screenshots. The final MP4 is
 H.264/yuv420p at 1920×1080 and 30 fps. `EXECUTED` continues to mean only that
 browser actions completed; only the deterministic verifier can produce
 `PASSED`, and only a verified integrity-checked run is composed.
+
+An opted-in narrated run additionally writes `narration.json`, one PCM WAV per
+scene, and `demo-narrated.mp4` with H.264 video and AAC audio. Every cue cites a
+passed assertion and retains the exact verified scene bounds.
 
 The CLI uses exit code `1` for an action-level `FAILED` result, `2` for blocked
 browser infrastructure or artifact output, and `64` for an invalid input spec.
@@ -155,11 +179,15 @@ model.
   scaling, letterboxing, and encoding.
 - A planner can propose only a DemoSpec candidate. ProofDemo revalidates it,
   preserves the requested origin, and requires a separate explicit run command.
+- Narration uses only short project-owned phrases selected by passed assertion
+  type. TTS synthesizes those phrases but cannot author or expand claims.
+- Speech that cannot fit its scene within the bounded tempo policy is rejected;
+  it is not truncated, shifted, or allowed to cover another scene.
 
 ## Repository map
 
 ```text
-backend/src/proofdemo/  API, execution/verification/capture/render, and adapters
+backend/src/proofdemo/  API, planning/execution/verification/media, and adapters
 frontend/               React and TypeScript frontend
 shared/schemas/         generated cross-runtime contracts
 examples/               valid inputs and the deterministic Todo fixture
@@ -183,7 +211,8 @@ non-sensitive literal fill data, constrains navigation to one origin, and does
 not inject browser credentials. The application-state assertion reads one
 validated top-level key and cannot execute spec-provided JavaScript. Fill
 values are omitted from action trace payloads, and browser diagnostic text is
-bounded and sanitized before persistence. Stage 5 reads provider credentials
+bounded and sanitized before persistence. Stage 6 reads provider credentials
 only from the environment and never stores them in planner inputs, candidates,
-traces, or artifacts. Destructive-action safeguards remain a later-stage
-requirement.
+traces, narration text, or artifacts. TTS receives only non-sensitive grounded
+phrases, and artifact metadata records the AI voice disclosure. Destructive-
+action safeguards remain a later-stage requirement.

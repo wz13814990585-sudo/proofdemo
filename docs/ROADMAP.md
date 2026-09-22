@@ -47,12 +47,12 @@ Transform verified traces and recordings into a repeatable timeline and basic
 Use a bounded model call to turn natural-language intent into a reviewable
 DemoSpec that the existing deterministic pipeline can validate and execute.
 
-## Stage 6 — Narration and TTS (next)
+## Stage 6 — Narration and TTS (complete)
 
 Generate narration constrained by verified events, synthesize speech, and align
 audio to scene timing without inventing success claims.
 
-## Stage 7 — Replayable DemoRecipe
+## Stage 7 — Replayable DemoRecipe (next)
 
 Persist stable inputs and execution metadata, then replay a recipe with clear
 compatibility and provenance reporting.

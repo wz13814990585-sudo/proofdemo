@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     api_port: int = Field(default=8000, ge=1, le=65_535)
     frontend_origin: str = "http://127.0.0.1:5173"
     openai_model: str | None = None
+    openai_tts_model: str | None = None
+    openai_tts_voice: str | None = None
 
     @classmethod
     def from_env(cls) -> Settings:
