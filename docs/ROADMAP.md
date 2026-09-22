@@ -9,13 +9,13 @@ Create the repository, product and architecture documentation, API/frontend
 shells, authoritative DemoSpec models and schema, deterministic DemoRun
 lifecycle, test infrastructure, and local setup.
 
-## Stage 0.1 — Execution Contract Hardening (current)
+## Stage 0.1 — Execution Contract Hardening (complete)
 
 Separate execution from verification, stabilize DemoSpec identities and typed
 targets, require timezone-aware run history, make local configuration truthful,
 and clarify artifact ownership before a browser runtime consumes the contracts.
 
-## Stage 1 — Deterministic Browser Execution
+## Stage 1 — Deterministic Browser Execution (complete)
 
 Execute a manually authored DemoSpec with a Playwright adapter. Begin with
 same-origin navigation, click, fill with non-sensitive demonstration data,
@@ -24,7 +24,7 @@ local test application. Return a lightweight execution report and finish the
 run as `EXECUTED`; do not claim verification. No model planning or autonomous
 recovery.
 
-## Stage 2 — Assertions and Verified Scenes
+## Stage 2 — Assertions and Verified Scenes (next)
 
 Evaluate explicit DOM, URL, download, and application-facing assertions. Give
 every scene a `PASSED`, `FAILED`, or `BLOCKED` outcome tied to evidence, and

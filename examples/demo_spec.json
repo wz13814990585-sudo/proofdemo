@@ -3,7 +3,7 @@
   "id": "todo_demo",
   "title": "Create a task",
   "goal": "Show a product user creating a new task and seeing it in the list.",
-  "source_url": "https://example.test/todos",
+  "source_url": "http://127.0.0.1:4173/",
   "audience": "Product evaluation team",
   "language": "en",
   "approximate_duration_seconds": 30,
@@ -16,7 +16,7 @@
         {
           "id": "open-todo-app",
           "type": "goto",
-          "url": "https://example.test/todos"
+          "url": "http://127.0.0.1:4173/"
         },
         {
           "id": "enter-task-title",

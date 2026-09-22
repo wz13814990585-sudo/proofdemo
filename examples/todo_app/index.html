@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ProofDemo Todo Fixture</title>
+    <style>
+      :root { font-family: Inter, system-ui, sans-serif; color: #172033; background: #f4f6fb; }
+      body { margin: 0; min-height: 100vh; display: grid; place-items: center; }
+      main { width: min(640px, calc(100% - 48px)); padding: 40px; background: white; border-radius: 18px; box-shadow: 0 18px 50px #1d2a4a1f; }
+      h1 { margin-top: 0; }
+      form { display: flex; gap: 12px; }
+      label { flex: 1; font-weight: 650; }
+      input { display: block; box-sizing: border-box; width: 100%; margin-top: 8px; padding: 12px; border: 1px solid #aeb8ce; border-radius: 8px; font: inherit; }
+      button { align-self: end; padding: 12px 18px; border: 0; border-radius: 8px; background: #315be8; color: white; font: inherit; font-weight: 700; cursor: pointer; }
+      ul { min-height: 48px; margin-bottom: 0; padding-left: 24px; }
+      li { padding: 8px 0; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Launch tasks</h1>
+      <form id="task-form">
+        <label>Task title<input id="task-title" name="task-title" autocomplete="off" /></label>
+        <button type="submit">Add task</button>
+      </form>
+      <ul data-testid="task-list" aria-label="Task list"></ul>
+    </main>
+    <script>
+      const form = document.querySelector("#task-form");
+      const input = document.querySelector("#task-title");
+      const list = document.querySelector('[data-testid="task-list"]');
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const value = input.value.trim();
+        if (!value) return;
+        const item = document.createElement("li");
+        item.textContent = value;
+        list.append(item);
+        input.value = "";
+      });
+    </script>
+  </body>
+</html>
