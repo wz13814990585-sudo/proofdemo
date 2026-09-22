@@ -1,68 +1,55 @@
-# Current Stage — Stage 4: Deterministic Video Composition
+# Current Stage — Stage 5: Bounded Demo Planner
 
 ## Goal
 
-Transform an integrity-checked, verified browser recording into a repeatable
-timeline and a basic 1920×1080 MP4. Keep timeline semantics under project
-control and delegate commodity media probing/encoding to an FFmpeg adapter.
+Turn a URL and natural-language demo intent into a reviewable DemoSpec `1.2`
+candidate through one bounded structured-output model call. The planner may
+propose; deterministic domain validation and the existing executor/verifier
+remain authoritative.
 
 ## Required Outcomes
 
-1. Composition accepts only a Stage 3 report whose run and verification status
-   are both `PASSED` and whose artifact manifest passes integrity checks.
-2. A versioned timeline maps every verified scene to deterministic millisecond
-   boundaries derived from correlated trace events and source-video duration.
-3. Timeline validation requires ordered, non-overlapping, positive scene ranges
-   that cover the complete source recording.
-4. An application-owned `RenderPort` separates timeline policy from FFmpeg
-   process invocation and media probing.
-5. The FFmpeg adapter produces 1920×1080, 30 fps, H.264/yuv420p MP4 with a
-   fixed letterbox policy, no audio, stripped input metadata, and bounded
-   execution errors.
-6. Rendering the same verified source and timeline twice produces identical
-   output bytes in the supported local environment.
-7. `timeline.json` and `demo.mp4` are added to the Stage 3 artifact manifest
-   with byte counts and SHA-256 digests.
-8. `proofdemo run` composes automatically only after a verified `PASSED` run.
-   Failed, blocked, or tampered runs never produce success video.
-9. Missing FFmpeg is reported as a blocked render precondition without changing
-   the underlying execution or verification evidence.
-10. Existing execution, verification, capture, schema, lint, type, and frontend
-    checks continue to pass.
+1. A strict `DemoIntent` model captures source URL, goal, audience, language,
+   and optional target duration without credentials or executable content.
+2. `PlanningService` depends on a narrow `PlannerPort`, never on a provider SDK.
+3. The OpenAI adapter uses the Responses API structured-output parser with the
+   authoritative Pydantic DemoSpec model, no tools, no browsing, no conversation
+   persistence, and an explicit configured model name.
+4. Provider output is revalidated by ProofDemo and rejected if its source URL
+   differs from the requested origin, even when its JSON shape is valid.
+5. Planning errors distinguish unavailable configuration/provider, model
+   refusal/incomplete output, and invalid candidate contracts without exposing
+   API keys or raw provider payloads.
+6. `proofdemo plan URL --goal ... --output ...` atomically writes a candidate
+   JSON spec for human review. It does not execute the candidate automatically.
+7. The standard manually authored `proofdemo run` path remains fully usable
+   without an API key or planner model.
+8. The model name comes from `--model` or `PROOFDEMO_OPENAI_MODEL`; ProofDemo
+   does not silently substitute a current/latest model.
+9. Unit/contract tests use a fake planner. A provider-adapter test uses a fake
+   SDK client and makes no network request.
+10. Existing deterministic execution, verification, capture, rendering, lint,
+    type, and frontend checks continue to pass.
 
 ## Acceptance Criteria
 
-For the local Todo fixture, `proofdemo run` must exit `0` and additionally
-produce:
+A fake provider planning the Todo goal must produce a valid DemoSpec `1.2` that
+round-trips through JSON, preserves the requested origin, contains stable IDs,
+starts with `goto`, and has at least one assertion per scene. Tests must also
+prove rejection of cross-origin candidates, provider refusal, missing model
+configuration, embedded URL credentials, and accidental automatic execution.
 
-- `timeline.json` with the verified `create_task` scene covering the source;
-- `demo.mp4` with H.264 video at exactly 1920×1080 and 30 fps;
-- a non-zero duration matching the browser recording within one output frame;
-- final manifest records and valid hashes for the timeline and MP4;
-- no video output when the example assertion is deliberately made false.
-
-Automated tests must prove timeline invariants, refusal of unverified/tampered
-inputs, deterministic repeated rendering, FFmpeg-unavailable behavior, and
-real media properties through FFprobe.
-
-The full validation suite remains:
-
-```text
-python -m pytest
-ruff format --check .
-ruff check .
-mypy backend/src
-npm --prefix frontend run build
-```
+Live OpenAI planning is optional in local validation because it requires the
+user's `OPENAI_API_KEY`, account access, and explicitly selected model. The
+checked-in suite must never make a billable network request.
 
 ## Not Included
 
-- scene transitions, zooms, cursor effects, overlays, captions, music, or
-  editorial trimming;
-- narration, TTS, audio mixing, or lip/timing alignment;
-- model planning, autonomous exploration, locator repair, or retries;
-- DemoRecipe persistence, partial rerendering, queues, workers, or cloud
-  rendering.
+- autonomous exploration, screenshots as model input, DOM inspection, tool
+  calls, locator repair, or retries;
+- automatic execution of a newly planned candidate without review;
+- narration, TTS, audio, recipe persistence, change detection, queues, or
+  production provider routing.
 
 ## Completion Status
 

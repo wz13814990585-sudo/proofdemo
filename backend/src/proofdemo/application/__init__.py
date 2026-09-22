@@ -7,6 +7,7 @@ from proofdemo.application.execution import (
     ExecutionReport,
     ExecutionService,
 )
+from proofdemo.application.planning import PlanningResult, PlanningService
 from proofdemo.application.rendering import (
     CompositionResult,
     CompositionService,
@@ -35,6 +36,8 @@ __all__ = [
     "ExecutionReport",
     "ExecutionService",
     "OutcomeStatus",
+    "PlanningResult",
+    "PlanningService",
     "SceneResult",
     "TimelineScene",
     "TraceEvent",
