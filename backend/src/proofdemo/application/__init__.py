@@ -18,6 +18,10 @@ from proofdemo.application.narration import (
     NarrationService,
     NarrationTrack,
 )
+from proofdemo.application.partial_rendering import (
+    PartialRenderPlan,
+    PartialRenderService,
+)
 from proofdemo.application.planning import PlanningResult, PlanningService
 from proofdemo.application.recipes import RecipeService, ReplayPreflight
 from proofdemo.application.rendering import (
@@ -26,6 +30,7 @@ from proofdemo.application.rendering import (
     TimelineScene,
     VideoTimeline,
 )
+from proofdemo.application.repair import RepairService
 from proofdemo.application.trace import TraceEvent, TraceEventKind
 from proofdemo.application.verification import (
     AssertionEvidence,
@@ -53,9 +58,12 @@ __all__ = [
     "NarrationService",
     "NarrationTrack",
     "OutcomeStatus",
+    "PartialRenderPlan",
+    "PartialRenderService",
     "PlanningResult",
     "PlanningService",
     "RecipeService",
+    "RepairService",
     "ReplayPreflight",
     "SceneResult",
     "TimelineScene",

@@ -10,11 +10,12 @@ The product flow is:
 Intent -> Plan -> Execute -> Verify -> Capture -> Render
 ```
 
-This repository currently implements **Stage 8**: a bounded optional planner,
+This repository currently implements **Stage 9**: a bounded optional planner,
 deterministic execution and verification, correlated artifacts, 1080p video,
 opt-in evidence-grounded narration, replay recipes, and deterministic UI change
-detection. A model may propose a reviewable DemoSpec, but it cannot execute it
-or claim success; spoken product claims are fixed templates derived from passed
+detection plus review-required single-scene target repair. A model may propose a
+reviewable DemoSpec or target repair, but it cannot execute either or claim
+success; spoken product claims are fixed templates derived from passed
 assertions. See
 [the current stage](docs/CURRENT_STAGE.md) for the exact scope.
 
@@ -140,6 +141,30 @@ explicit missing or invalid baseline stops before browser execution; a portable
 recipe without local baseline evidence can still replay with change status
 `NOT_EVALUATED`.
 
+For a `CHANGED` replay, propose one bounded scene repair without executing it:
+
+```bash
+proofdemo propose-repair artifacts/todo-demo/demo_recipe.json \
+  --change-artifacts artifacts/todo-demo-changed \
+  --scene create_task \
+  --hint "The submit button is now named Create task" \
+  --model YOUR_EXPLICIT_MODEL \
+  --output repair-candidate.json
+```
+
+After reviewing the candidate, explicitly approve execution:
+
+```bash
+proofdemo apply-repair artifacts/todo-demo/demo_recipe.json repair-candidate.json \
+  --change-artifacts artifacts/todo-demo-changed \
+  --baseline-artifacts artifacts/todo-demo \
+  --artifacts artifacts/todo-demo-repaired
+```
+
+A fully verified repair writes `partial_render.json` and
+`demo-repaired.mp4`. Unchanged scenes source their ranges from baseline video;
+only the diagnosed scene sources new footage.
+
 A successful Stage 4 run exits `0`, transitions through `EXECUTED` to `PASSED`,
 and writes `execution_report.json`, `trace.jsonl`, `browser.log.jsonl`,
 `browser.webm`, `timeline.json`, `demo.mp4`, `artifact_manifest.json`, the
@@ -213,6 +238,9 @@ model.
 - UI change detection compares stable action/assertion IDs and structured
   observations against the verified baseline. It reports change categories but
   cannot rewrite selectors, assertions, run status, or footage.
+- Repairs may replace only diagnosed typed targets on existing click/fill
+  actions or element/text assertions in one scene. Applying a reviewed proposal
+  reruns the complete DemoSpec; partial rendering occurs only after `PASSED`.
 
 ## Repository map
 
@@ -241,7 +269,7 @@ non-sensitive literal fill data, constrains navigation to one origin, and does
 not inject browser credentials. The application-state assertion reads one
 validated top-level key and cannot execute spec-provided JavaScript. Fill
 values are omitted from action trace payloads, and browser diagnostic text is
-bounded and sanitized before persistence. Stage 8 reads provider credentials
+bounded and sanitized before persistence. Stage 9 reads provider credentials
 only from the environment and never stores them in planner inputs, candidates,
 traces, narration text, or artifacts. TTS receives only non-sensitive grounded
 phrases, and artifact metadata records the AI voice disclosure. Recipes contain

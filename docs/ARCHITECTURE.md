@@ -18,11 +18,12 @@ Application orchestration
 Domain  Adapters  Persistence
 ```
 
-Through Stage 8, the application layer contains a bounded planning service plus
+Through Stage 9, the application layer contains a bounded planning service plus
 focused deterministic execution, verification, tracing, artifact-persistence,
 composition, narration, recipe, replay-preflight, and change-detection services.
-Browser, media, and provider mechanics sit behind application-owned ports
-implemented by Playwright Chromium, FFmpeg, and optional OpenAI adapters.
+It also contains bounded repair validation and partial-render policy. Browser,
+media, and provider mechanics sit behind application-owned ports implemented by
+Playwright Chromium, FFmpeg, and optional OpenAI adapters.
 
 ## Technology Choices
 
@@ -87,6 +88,9 @@ rendering frameworks. Adapters implement application-defined boundaries.
 | Recipe compatibility | deterministic application policy |
 | Replay execution | existing execution/verification/media services |
 | UI change diagnosis | deterministic stable-ID evidence comparison |
+| Repair scope/application | deterministic target-only policy |
+| Repair suggestion | model behind a no-tools structured-output port |
+| Partial scene source selection | deterministic verified-artifact policy |
 
 ## DemoSpec Execution Contract
 
@@ -215,8 +219,8 @@ MP4 are included in the integrity manifest.
 
 ## DemoRun Lifecycle
 
-Stage 7 preserves this legal state graph; planning, rendering, narration, and
-replay preflight cannot change it:
+Stage 9 preserves this legal state graph; planning, rendering, narration,
+replay preflight, change detection, and repair composition cannot change it:
 
 ```text
 CREATED -> VALIDATED -> RUNNING -> EXECUTED -> PASSED
@@ -269,6 +273,26 @@ used. `ui_change_report.json` is persisted even for a failed replay and never
 changes verification or lifecycle status. A copied portable recipe with no
 local baseline can replay with an explicit `NOT_EVALUATED` report.
 
+## Repair and Partial Render Boundary
+
+`RepairService` loads only an integrity-recorded `CHANGED` report belonging to
+the supplied recipe. `RepairPort` may propose typed target replacements for one
+diagnosed scene. Deterministic validation requires each replacement to identify
+an existing diagnosed click/fill action or element/text assertion, rejects an
+unchanged target, and prevents every other DemoSpec field or ordering change.
+`propose-repair` only writes a review candidate; `apply-repair` is the explicit
+approval boundary.
+
+An approved proposal reconstructs the authoritative DemoSpec and then uses the
+normal executor and verifier. `PartialRenderService` runs only after the new run
+is fully `PASSED` and both baseline and repaired manifests pass integrity. It
+requires identical scene sets and unchanged contracts outside the repaired
+scene. Its project-owned plan selects the repaired `demo.mp4` range for that
+scene and baseline ranges for every other scene. The FFmpeg adapter trims and
+concatenates those ranges into silent `demo-repaired.mp4`; the plan records all
+source hashes and input/output bounds. Partial narration/audio regeneration is
+deliberately deferred.
+
 ## Configuration and Security
 
 Configuration comes from `.env` and `PROOFDEMO_` environment variables, with
@@ -282,13 +306,13 @@ Diagnostic logs are bounded and sanitized, and fill values are not copied into
 action trace payloads. Provider credentials are read only from environment
 configuration and are never admitted to DemoIntent, DemoSpec, traces, or
 artifacts. Speech receives only fixed, non-sensitive phrases. Recipes omit
-environment snapshots, browser session state, and credentials. Stage 8 does not
+environment snapshots, browser session state, and credentials. Stage 9 does not
 support browser credential injection.
 
 ## Deliberate Deferrals
 
 There are no model tools, model-written narration, autonomous exploration,
 locator repair, editorial transitions, zooms, overlays, captions, music,
-database, queue, model diagnosis, repair, partial rerender, or cloud artifact
-store through Stage 8. Those are introduced only when their roadmap
+database, queue, autonomous/multi-scene repair, partial narration, or cloud
+artifact store through Stage 9. Those are introduced only when their roadmap
 stage supplies executable acceptance criteria.

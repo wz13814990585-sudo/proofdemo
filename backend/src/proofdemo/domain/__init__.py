@@ -10,6 +10,7 @@ from proofdemo.domain.demo_run import (
 )
 from proofdemo.domain.demo_spec import DemoSpec
 from proofdemo.domain.recipe import DemoRecipe
+from proofdemo.domain.repair import SceneRepairProposal
 
 __all__ = [
     "DemoRecipe",
@@ -18,6 +19,7 @@ __all__ = [
     "DemoSpec",
     "InvalidRunTimestamp",
     "InvalidRunTransition",
+    "SceneRepairProposal",
     "create_demo_run",
     "transition_demo_run",
 ]

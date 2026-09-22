@@ -8,6 +8,7 @@ from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import pytest
 
@@ -31,6 +32,11 @@ from proofdemo.application.narration import (
     NarrationService,
     validate_narration_grounding,
 )
+from proofdemo.application.partial_rendering import (
+    PartialRenderRefusedError,
+    PartialRenderService,
+    RepairExecutionContext,
+)
 from proofdemo.application.recipes import (
     EXECUTION_PROFILE,
     CompatibilityStatus,
@@ -43,12 +49,19 @@ from proofdemo.application.rendering import (
     TimelineScene,
     VideoTimeline,
 )
+from proofdemo.application.repair import (
+    InvalidRepairProposal,
+    RepairArtifactError,
+    RepairService,
+)
 from proofdemo.application.trace import TraceEventKind
 from proofdemo.application.verification import OutcomeStatus, VerificationStatus
 from proofdemo.cli import EXIT_BLOCKED, EXIT_EXECUTED, EXIT_FAILED, run
 from proofdemo.domain.demo_run import DemoRunStatus
-from proofdemo.domain.demo_spec import DemoSpec, ElementTarget
+from proofdemo.domain.demo_spec import DemoSpec, ElementTarget, RoleTarget
+from proofdemo.domain.demo_spec import TestIdTarget as ByTestIdTarget
 from proofdemo.domain.recipe import DemoRecipe, demo_spec_sha256
+from proofdemo.domain.repair import SceneRepairProposal, TargetReplacement
 from proofdemo.ports.audio import AudioInfo, AudioMixCue
 from proofdemo.ports.browser import (
     AppStateObservation,
@@ -58,7 +71,9 @@ from proofdemo.ports.browser import (
     BrowserUnavailableError,
     DownloadObservation,
 )
+from proofdemo.ports.partial_render import VideoSegment
 from proofdemo.ports.render import MediaInfo, RenderSettings
+from proofdemo.ports.repair import RepairCandidate
 from proofdemo.ports.speech import SpeechDescriptor
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -171,6 +186,32 @@ class FakeRenderer:
         assert source.is_file()
         assert settings == RenderSettings()
         output.write_bytes(b"deterministic fake mp4")
+
+
+class FakePartialRenderer:
+    def __init__(self) -> None:
+        self.segments: tuple[VideoSegment, ...] = ()
+        self.duration_ms = 0
+
+    def probe(self, path: Path) -> MediaInfo:
+        return MediaInfo(
+            duration_ms=self.duration_ms,
+            width=1920,
+            height=1080,
+            fps=30.0,
+            codec="h264",
+        )
+
+    def render_segments(
+        self,
+        segments: tuple[VideoSegment, ...],
+        output: Path,
+        settings: RenderSettings,
+    ) -> None:
+        assert settings == RenderSettings()
+        self.segments = segments
+        self.duration_ms = sum(segment.end_ms - segment.start_ms for segment in segments)
+        output.write_bytes(b"fake partial render")
 
 
 class FakeSpeech:
@@ -567,6 +608,9 @@ def test_artifact_writer_hashes_and_verifies_every_declared_file(tmp_path: Path)
         ArtifactKind.DEMO_RECIPE,
         ArtifactKind.REPLAY_PREFLIGHT,
         ArtifactKind.UI_CHANGE_REPORT,
+        ArtifactKind.REPAIR_PROPOSAL,
+        ArtifactKind.PARTIAL_RENDER_PLAN,
+        ArtifactKind.REPAIRED_VIDEO,
     }
     assert len(manifest.artifacts) == 10
     assert all(len(record.sha256) == 64 for record in manifest.artifacts)
@@ -1167,6 +1211,310 @@ def test_explicit_missing_baseline_never_starts_browser(
     )
 
     assert replay_exit == 64
+
+
+def repair_cli_fixture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[Path, Path, DemoRecipe, SceneRepairProposal]:
+    spec_path = tmp_path / "spec.json"
+    spec_path.write_text(json.dumps(load_example()), encoding="utf-8")
+    source_dir = tmp_path / "source"
+    change_dir = tmp_path / "changed"
+    monkeypatch.setattr("proofdemo.cli.PlaywrightBrowser", FakeBrowser)
+    monkeypatch.setattr("proofdemo.cli.FFmpegRenderAdapter", FakeRenderer)
+    assert run(["run", str(spec_path), "--artifacts", str(source_dir)]) == EXIT_EXECUTED
+    monkeypatch.setattr(
+        "proofdemo.cli.PlaywrightBrowser",
+        lambda: FakeBrowser(action_error=BrowserActionError("target not actionable")),
+    )
+    assert (
+        run(
+            [
+                "replay",
+                str(source_dir / "demo_recipe.json"),
+                "--artifacts",
+                str(change_dir),
+            ]
+        )
+        == EXIT_FAILED
+    )
+    recipe = DemoRecipe.model_validate_json(
+        (source_dir / "demo_recipe.json").read_text(encoding="utf-8")
+    )
+    proposal = SceneRepairProposal(
+        source_recipe_id=recipe.id,
+        source_spec_sha256=recipe.spec_sha256,
+        scene_id="create_task",
+        diagnostic_categories=("SELECTOR_BROKEN",),
+        replacements=(
+            TargetReplacement(
+                entity="action",
+                entity_id="add-task",
+                target=RoleTarget(strategy="role", role="button", name="Create task"),
+            ),
+        ),
+        rationale="Use the reviewed current button name.",
+    )
+    return source_dir, change_dir, recipe, proposal
+
+
+def test_repair_validation_rejects_undiagnosed_or_unchanged_target(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, change_dir, recipe, proposal = repair_cli_fixture(tmp_path, monkeypatch)
+    change_report = RepairService.load_change_report(recipe, change_dir)
+    undiagnosed = proposal.model_copy(
+        update={
+            "replacements": (
+                TargetReplacement(
+                    entity="action",
+                    entity_id="enter-task-title",
+                    target=ByTestIdTarget(strategy="test_id", test_id="renamed-input"),
+                ),
+            )
+        }
+    )
+    unchanged = proposal.model_copy(
+        update={
+            "replacements": (
+                TargetReplacement(
+                    entity="action",
+                    entity_id="add-task",
+                    target=RoleTarget(strategy="role", role="button", name="Add task"),
+                ),
+            )
+        }
+    )
+
+    with pytest.raises(InvalidRepairProposal, match="without a diagnosed change"):
+        RepairService.validate(recipe, change_report, undiagnosed)
+    with pytest.raises(InvalidRepairProposal, match="unchanged"):
+        RepairService.validate(recipe, change_report, unchanged)
+
+
+def test_repair_rejects_tampered_change_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, change_dir, recipe, _ = repair_cli_fixture(tmp_path, monkeypatch)
+    (change_dir / "ui_change_report.json").write_text("{}", encoding="utf-8")
+
+    with pytest.raises(RepairArtifactError, match="integrity failed"):
+        RepairService.load_change_report(recipe, change_dir)
+
+
+def test_propose_repair_writes_candidate_without_execution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_dir, change_dir, _, proposal = repair_cli_fixture(tmp_path, monkeypatch)
+
+    class FakeRepairPlanner:
+        def propose(self, request: object) -> RepairCandidate:
+            return RepairCandidate(proposal=proposal, provider="fake", model="fixture-model")
+
+    monkeypatch.setattr(
+        "proofdemo.cli.OpenAIRepairAdapter",
+        lambda model: FakeRepairPlanner(),
+    )
+    monkeypatch.setattr(
+        "proofdemo.cli.ExecutionService",
+        lambda browser: (_ for _ in ()).throw(AssertionError("proposal must not execute")),
+    )
+    output = tmp_path / "proposal.json"
+
+    exit_code = run(
+        [
+            "propose-repair",
+            str(source_dir / "demo_recipe.json"),
+            "--change-artifacts",
+            str(change_dir),
+            "--scene",
+            "create_task",
+            "--model",
+            "explicit-model",
+            "--output",
+            str(output),
+        ]
+    )
+
+    assert exit_code == EXIT_EXECUTED
+    assert SceneRepairProposal.model_validate_json(output.read_text(encoding="utf-8")) == proposal
+
+
+def test_apply_repair_requires_verified_run_then_emits_repaired_video(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_dir, change_dir, recipe, proposal = repair_cli_fixture(tmp_path, monkeypatch)
+    proposal_path = tmp_path / "proposal.json"
+    proposal_path.write_text(proposal.model_dump_json(), encoding="utf-8")
+    repaired_dir = tmp_path / "repaired"
+    monkeypatch.setattr("proofdemo.cli.PlaywrightBrowser", FakeBrowser)
+    monkeypatch.setattr("proofdemo.cli.FFmpegRenderAdapter", FakeRenderer)
+    monkeypatch.setattr("proofdemo.cli.FFmpegPartialRenderAdapter", FakePartialRenderer)
+
+    exit_code = run(
+        [
+            "apply-repair",
+            str(source_dir / "demo_recipe.json"),
+            str(proposal_path),
+            "--change-artifacts",
+            str(change_dir),
+            "--baseline-artifacts",
+            str(source_dir),
+            "--artifacts",
+            str(repaired_dir),
+        ]
+    )
+    plan = json.loads((repaired_dir / "partial_render.json").read_text(encoding="utf-8"))
+    manifest = json.loads((repaired_dir / "artifact_manifest.json").read_text(encoding="utf-8"))
+    repaired_recipe = DemoRecipe.model_validate_json(
+        (repaired_dir / "demo_recipe.json").read_text(encoding="utf-8")
+    )
+
+    assert exit_code == EXIT_EXECUTED
+    assert plan["repaired_scene_id"] == "create_task"
+    assert plan["scenes"][0]["source"] == "repaired"
+    assert repaired_recipe.provenance.final_video.path == "demo-repaired.mp4"
+    assert {record["kind"] for record in manifest["artifacts"]}.issuperset(
+        {"REPAIR_PROPOSAL", "PARTIAL_RENDER_PLAN", "REPAIRED_VIDEO", "DEMO_RECIPE"}
+    )
+    assert str(repaired_recipe.provenance.source_run_id) != str(recipe.provenance.source_run_id)
+
+
+def test_failed_repair_never_produces_repaired_success_video(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_dir, change_dir, _, proposal = repair_cli_fixture(tmp_path, monkeypatch)
+    proposal_path = tmp_path / "proposal.json"
+    proposal_path.write_text(proposal.model_dump_json(), encoding="utf-8")
+    repaired_dir = tmp_path / "failed-repair"
+    monkeypatch.setattr(
+        "proofdemo.cli.PlaywrightBrowser",
+        lambda: FakeBrowser(text="assertion remains broken"),
+    )
+
+    exit_code = run(
+        [
+            "apply-repair",
+            str(source_dir / "demo_recipe.json"),
+            str(proposal_path),
+            "--change-artifacts",
+            str(change_dir),
+            "--baseline-artifacts",
+            str(source_dir),
+            "--artifacts",
+            str(repaired_dir),
+        ]
+    )
+
+    assert exit_code == EXIT_FAILED
+    assert not (repaired_dir / "demo-repaired.mp4").exists()
+    assert not (repaired_dir / "partial_render.json").exists()
+
+
+def test_partial_render_reuses_only_unchanged_scene_footage(tmp_path: Path) -> None:
+    raw = load_example()
+    raw["scenes"].append(
+        {
+            "id": "review_task",
+            "title": "Review the task",
+            "goal": "Review the created task.",
+            "actions": [
+                {
+                    "id": "review-task",
+                    "type": "click",
+                    "target": {"strategy": "test_id", "test_id": "old-review"},
+                }
+            ],
+            "assertions": [
+                {
+                    "id": "review-visible",
+                    "type": "element_visible",
+                    "target": {"strategy": "test_id", "test_id": "old-review"},
+                }
+            ],
+        }
+    )
+    baseline_spec = DemoSpec.model_validate(raw)
+    repaired_raw = deepcopy(raw)
+    repaired_raw["scenes"][1]["actions"][0]["target"]["test_id"] = "new-review"
+    repaired_spec = DemoSpec.model_validate(repaired_raw)
+    baseline_dir = tmp_path / "baseline"
+    repaired_dir = tmp_path / "repaired"
+    writer = ArtifactWriter()
+    baseline_bundle = ExecutionService(FakeBrowser()).execute_bundle(baseline_spec, baseline_dir)
+    baseline_source = writer.persist(baseline_bundle, baseline_dir)
+    baseline_composition = CompositionService(FakeRenderer()).compose(
+        baseline_bundle, baseline_source, baseline_dir
+    )
+    writer.persist(
+        baseline_bundle,
+        baseline_dir,
+        extra_artifacts=baseline_composition.declarations,
+    )
+    repaired_bundle = ExecutionService(FakeBrowser()).execute_bundle(repaired_spec, repaired_dir)
+    repaired_source = writer.persist(repaired_bundle, repaired_dir)
+    repaired_composition = CompositionService(FakeRenderer()).compose(
+        repaired_bundle, repaired_source, repaired_dir
+    )
+    repaired_manifest = writer.persist(
+        repaired_bundle,
+        repaired_dir,
+        extra_artifacts=repaired_composition.declarations,
+    )
+    proposal = SceneRepairProposal(
+        source_recipe_id=uuid4(),
+        source_spec_sha256="a" * 64,
+        scene_id="review_task",
+        diagnostic_categories=("SELECTOR_BROKEN",),
+        replacements=(
+            TargetReplacement(
+                entity="action",
+                entity_id="review-task",
+                target=ByTestIdTarget(strategy="test_id", test_id="new-review"),
+            ),
+        ),
+        rationale="Use the current reviewed test ID.",
+    )
+    renderer = FakePartialRenderer()
+
+    result = PartialRenderService(renderer).compose(
+        RepairExecutionContext(
+            baseline_dir=baseline_dir,
+            baseline_spec=baseline_spec,
+            proposal=proposal,
+        ),
+        repaired_spec,
+        repaired_bundle,
+        repaired_manifest,
+        repaired_composition.timeline,
+        repaired_dir,
+    )
+
+    assert [scene.source for scene in result.plan.scenes] == ["baseline", "repaired"]
+    assert renderer.segments[0].source == baseline_dir / "demo.mp4"
+    assert renderer.segments[1].source == repaired_dir / "demo.mp4"
+    assert result.output_info.duration_ms == result.plan.output_duration_ms
+
+    mismatched_spec = repaired_spec.model_copy(update={"scenes": repaired_spec.scenes[:1]})
+    with pytest.raises(PartialRenderRefusedError, match="scene set"):
+        PartialRenderService(FakePartialRenderer()).compose(
+            RepairExecutionContext(
+                baseline_dir=baseline_dir,
+                baseline_spec=baseline_spec,
+                proposal=proposal,
+            ),
+            mismatched_spec,
+            repaired_bundle,
+            repaired_manifest,
+            repaired_composition.timeline,
+            repaired_dir,
+        )
 
 
 def test_safe_artifact_path_rejects_traversal(tmp_path: Path) -> None:
