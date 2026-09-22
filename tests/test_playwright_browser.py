@@ -57,6 +57,10 @@ def spec_for_url(url: str) -> DemoSpec:
     )
     raw["source_url"] = url
     raw["scenes"][0]["actions"][0]["url"] = url
+    url_assertion = next(
+        item for item in raw["scenes"][0]["assertions"] if item["type"] == "url_equals"
+    )
+    url_assertion["expected_url"] = url
     return DemoSpec.model_validate(raw)
 
 
@@ -65,13 +69,21 @@ def test_real_chromium_executes_example_and_captures_screenshot(
 ) -> None:
     report = ExecutionService(PlaywrightBrowser()).execute(spec_for_url(todo_url), tmp_path)
 
-    assert report.run.status is DemoRunStatus.EXECUTED
-    assert report.verification_status == "NOT_RUN"
+    assert report.run.status is DemoRunStatus.PASSED
+    assert report.verification_status == "PASSED"
     assert [result.action_type for result in report.action_results] == [
         "goto",
         "fill",
         "click",
+        "click",
         "screenshot",
+    ]
+    assert [result.status for result in report.scene_results[0].assertion_results] == [
+        "PASSED",
+        "PASSED",
+        "PASSED",
+        "PASSED",
+        "PASSED",
     ]
     assert (tmp_path / "task-created.png").stat().st_size > 0
 

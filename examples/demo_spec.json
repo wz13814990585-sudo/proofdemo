@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "id": "todo_demo",
   "title": "Create a task",
   "goal": "Show a product user creating a new task and seeing it in the list.",
@@ -37,6 +37,15 @@
           }
         },
         {
+          "id": "download-launch-plan",
+          "type": "click",
+          "target": {
+            "strategy": "role",
+            "role": "link",
+            "name": "Download launch plan"
+          }
+        },
+        {
           "id": "capture-created-task",
           "type": "screenshot",
           "name": "task-created"
@@ -51,6 +60,30 @@
             "test_id": "task-list"
           },
           "expected_text": "Prepare launch demo"
+        },
+        {
+          "id": "task-list-visible",
+          "type": "element_visible",
+          "target": {
+            "strategy": "test_id",
+            "test_id": "task-list"
+          }
+        },
+        {
+          "id": "todo-url-remains",
+          "type": "url_equals",
+          "expected_url": "http://127.0.0.1:4173/"
+        },
+        {
+          "id": "launch-plan-downloaded",
+          "type": "download_completed",
+          "filename": "launch-plan.txt"
+        },
+        {
+          "id": "task-count-updated",
+          "type": "app_state_equals",
+          "key": "taskCount",
+          "expected_value": 1
         }
       ]
     }

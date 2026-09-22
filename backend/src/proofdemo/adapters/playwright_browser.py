@@ -1,14 +1,16 @@
-"""Synchronous Playwright implementation of the Stage 1 browser port."""
+"""Synchronous Playwright implementation of the deterministic browser port."""
 
 from __future__ import annotations
 
 from pathlib import Path
+from time import monotonic
 from typing import Any, cast
 from urllib.parse import urlsplit
 
 from playwright.sync_api import (
     Browser,
     BrowserContext,
+    Download,
     Locator,
     Page,
     Playwright,
@@ -20,6 +22,7 @@ from playwright.sync_api import (
 from playwright.sync_api import (
     TimeoutError as PlaywrightTimeoutError,
 )
+from pydantic import JsonValue, TypeAdapter, ValidationError
 
 from proofdemo.domain.demo_spec import (
     CssTarget,
@@ -29,9 +32,15 @@ from proofdemo.domain.demo_spec import (
     TestIdTarget,
     TextTarget,
 )
-from proofdemo.ports.browser import BrowserActionError, BrowserUnavailableError
+from proofdemo.ports.browser import (
+    AppStateObservation,
+    BrowserActionError,
+    BrowserUnavailableError,
+    DownloadObservation,
+)
 
 Origin = tuple[str, str, int]
+JSON_VALUE_ADAPTER: TypeAdapter[JsonValue] = TypeAdapter(JsonValue)
 
 
 def _origin(url: str) -> Origin:
@@ -52,6 +61,7 @@ class PlaywrightBrowser:
         self._browser: Browser | None = None
         self._context: BrowserContext | None = None
         self._page: Page | None = None
+        self._downloads: list[Download] = []
 
     def open(self, source_url: str) -> None:
         self._allowed_origin = _origin(source_url)
@@ -61,8 +71,10 @@ class PlaywrightBrowser:
             self._context = self._browser.new_context(
                 viewport={"width": 1280, "height": 720},
                 locale="en-US",
+                accept_downloads=True,
             )
             self._page = self._context.new_page()
+            self._page.on("download", lambda download: self._downloads.append(download))
         except Exception as error:
             self._shutdown()
             raise BrowserUnavailableError(f"Chromium could not start: {error}") from error
@@ -112,6 +124,76 @@ class PlaywrightBrowser:
             self._require_page().screenshot(path=str(path), full_page=full_page)
         except PlaywrightError as error:
             raise BrowserActionError(f"could not capture screenshot: {error}") from error
+
+    def is_visible(self, target: ElementTarget, *, timeout_ms: int) -> bool:
+        try:
+            self._locator(target).wait_for(state="visible", timeout=timeout_ms)
+            return True
+        except PlaywrightTimeoutError:
+            return False
+        except PlaywrightError as error:
+            raise BrowserActionError(f"visibility observation failed: {error}") from error
+
+    def text_content(self, target: ElementTarget, *, timeout_ms: int) -> str | None:
+        try:
+            return self._locator(target).text_content(timeout=timeout_ms)
+        except PlaywrightTimeoutError:
+            return None
+        except PlaywrightError as error:
+            raise BrowserActionError(f"text observation failed: {error}") from error
+
+    def current_url(self) -> str:
+        return self._require_page().url
+
+    def completed_download(self, filename: str, *, timeout_ms: int) -> DownloadObservation:
+        page = self._require_page()
+        deadline = monotonic() + (timeout_ms / 1_000)
+        while monotonic() < deadline:
+            matching = [item for item in self._downloads if item.suggested_filename == filename]
+            if matching:
+                download = matching[-1]
+                try:
+                    failure = download.failure()
+                    path = download.path() if failure is None else None
+                    byte_count = path.stat().st_size if path is not None else None
+                except PlaywrightError as error:
+                    raise BrowserActionError(f"download observation failed: {error}") from error
+                return DownloadObservation(
+                    filename=filename,
+                    completed=failure is None and path is not None,
+                    byte_count=byte_count,
+                    failure=failure,
+                )
+            page.wait_for_timeout(min(50, max(1, int((deadline - monotonic()) * 1_000))))
+        return DownloadObservation(filename=None, completed=False)
+
+    def application_state(self, key: str) -> AppStateObservation:
+        try:
+            raw = self._require_page().evaluate(
+                """
+                key => {
+                  const state = window.__PROOFDEMO_STATE__;
+                  if (state === null || typeof state !== "object") {
+                    return { found: false, value: null };
+                  }
+                  if (!Object.prototype.hasOwnProperty.call(state, key)) {
+                    return { found: false, value: null };
+                  }
+                  return { found: true, value: state[key] };
+                }
+                """,
+                key,
+            )
+            if not isinstance(raw, dict) or not isinstance(raw.get("found"), bool):
+                raise BrowserActionError("application-state hook returned an invalid envelope")
+            return AppStateObservation(
+                found=raw["found"],
+                value=JSON_VALUE_ADAPTER.validate_python(raw.get("value")),
+            )
+        except BrowserActionError:
+            raise
+        except (PlaywrightError, ValidationError) as error:
+            raise BrowserActionError(f"application-state observation failed: {error}") from error
 
     def close(self) -> None:
         errors = self._shutdown()
@@ -163,4 +245,5 @@ class PlaywrightBrowser:
         self._browser = None
         self._playwright = None
         self._allowed_origin = None
+        self._downloads = []
         return errors

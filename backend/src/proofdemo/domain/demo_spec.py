@@ -5,7 +5,15 @@ from __future__ import annotations
 from collections import Counter
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    HttpUrl,
+    JsonValue,
+    field_validator,
+    model_validator,
+)
 
 Identifier = Annotated[str, Field(pattern=r"^[a-z][a-z0-9_-]{0,63}$")]
 
@@ -135,8 +143,31 @@ class TextContainsAssertion(AssertionModel):
     timeout_ms: int = Field(default=10_000, ge=1, le=120_000)
 
 
+class DownloadCompletedAssertion(AssertionModel):
+    type: Literal["download_completed"]
+    filename: str = Field(min_length=1, max_length=255)
+    timeout_ms: int = Field(default=10_000, ge=1, le=120_000)
+
+    @field_validator("filename")
+    @classmethod
+    def validate_filename(cls, value: str) -> str:
+        if value in {".", ".."} or "/" in value or "\\" in value:
+            raise ValueError("download filename must be a plain filename")
+        return value
+
+
+class AppStateEqualsAssertion(AssertionModel):
+    type: Literal["app_state_equals"]
+    key: str = Field(pattern=r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
+    expected_value: JsonValue
+
+
 Assertion = Annotated[
-    ElementVisibleAssertion | UrlEqualsAssertion | TextContainsAssertion,
+    ElementVisibleAssertion
+    | UrlEqualsAssertion
+    | TextContainsAssertion
+    | DownloadCompletedAssertion
+    | AppStateEqualsAssertion,
     Field(discriminator="type"),
 ]
 
@@ -148,7 +179,7 @@ class Scene(DomainModel):
     title: str = Field(min_length=1, max_length=200)
     goal: str = Field(min_length=1, max_length=1_000)
     actions: tuple[Action, ...] = Field(min_length=1)
-    assertions: tuple[Assertion, ...] = ()
+    assertions: tuple[Assertion, ...] = Field(min_length=1)
 
     @model_validator(mode="after")
     def validate_child_identifiers(self) -> Scene:
@@ -165,7 +196,7 @@ class Scene(DomainModel):
 class DemoSpec(DomainModel):
     """The authoritative, versioned contract for a requested demo."""
 
-    schema_version: Literal["1.1"]
+    schema_version: Literal["1.2"]
     id: Identifier
     title: str = Field(min_length=1, max_length=200)
     goal: str = Field(min_length=1, max_length=2_000)
@@ -200,4 +231,13 @@ class DemoSpec(DomainModel):
                         raise ValueError(
                             f"goto Action {scene.id}/{action.id} must remain on source_url origin"
                         )
+            for assertion in scene.assertions:
+                if (
+                    isinstance(assertion, UrlEqualsAssertion)
+                    and _url_origin(assertion.expected_url) != allowed_origin
+                ):
+                    raise ValueError(
+                        f"url_equals Assertion {scene.id}/{assertion.id} must use "
+                        "the source_url origin"
+                    )
         return self

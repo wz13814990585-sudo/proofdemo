@@ -1,4 +1,4 @@
-"""Contract tests for DemoSpec 1.1 and its generated schema."""
+"""Contract tests for DemoSpec 1.2 and its generated schema."""
 
 import json
 from copy import deepcopy
@@ -24,7 +24,7 @@ def example_spec() -> Any:
 def test_example_demo_spec_is_valid() -> None:
     spec = DemoSpec.model_validate(example_spec())
 
-    assert spec.schema_version == "1.1"
+    assert spec.schema_version == "1.2"
     assert spec.id == "todo_demo"
     assert spec.scenes[0].actions[0].id == "open-todo-app"
     assert spec.scenes[0].assertions[0].id == "task-is-listed"
@@ -74,6 +74,14 @@ def test_scene_rejects_duplicate_assertion_ids() -> None:
         DemoSpec.model_validate(raw_spec)
 
 
+def test_scene_requires_at_least_one_assertion() -> None:
+    raw_spec = example_spec()
+    raw_spec["scenes"][0]["assertions"] = []
+
+    with pytest.raises(ValidationError, match="at least 1 item"):
+        DemoSpec.model_validate(raw_spec)
+
+
 def test_demo_spec_requires_initial_navigation() -> None:
     raw_spec = example_spec()
     raw_spec["scenes"][0]["actions"].pop(0)
@@ -87,6 +95,39 @@ def test_demo_spec_rejects_cross_origin_navigation() -> None:
     raw_spec["scenes"][0]["actions"][0]["url"] = "https://other.example.test/todos"
 
     with pytest.raises(ValidationError, match="must remain on source_url origin"):
+        DemoSpec.model_validate(raw_spec)
+
+
+def test_demo_spec_rejects_cross_origin_url_assertion() -> None:
+    raw_spec = example_spec()
+    url_assertion = next(
+        item for item in raw_spec["scenes"][0]["assertions"] if item["type"] == "url_equals"
+    )
+    url_assertion["expected_url"] = "https://other.example.test/"
+
+    with pytest.raises(ValidationError, match="url_equals Assertion"):
+        DemoSpec.model_validate(raw_spec)
+
+
+def test_app_state_key_cannot_contain_javascript() -> None:
+    raw_spec = example_spec()
+    state_assertion = next(
+        item for item in raw_spec["scenes"][0]["assertions"] if item["type"] == "app_state_equals"
+    )
+    state_assertion["key"] = "constructor.constructor('return window')()"
+
+    with pytest.raises(ValidationError, match="string_pattern_mismatch"):
+        DemoSpec.model_validate(raw_spec)
+
+
+def test_download_assertion_requires_plain_filename() -> None:
+    raw_spec = example_spec()
+    download_assertion = next(
+        item for item in raw_spec["scenes"][0]["assertions"] if item["type"] == "download_completed"
+    )
+    download_assertion["filename"] = "../secret.txt"
+
+    with pytest.raises(ValidationError, match="plain filename"):
         DemoSpec.model_validate(raw_spec)
 
 
