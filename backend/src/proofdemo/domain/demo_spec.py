@@ -178,8 +178,8 @@ class Scene(DomainModel):
     id: Identifier
     title: str = Field(min_length=1, max_length=200)
     goal: str = Field(min_length=1, max_length=1_000)
-    actions: tuple[Action, ...] = Field(min_length=1)
-    assertions: tuple[Assertion, ...] = Field(min_length=1)
+    actions: tuple[Action, ...] = Field(min_length=1, max_length=100)
+    assertions: tuple[Assertion, ...] = Field(min_length=1, max_length=100)
 
     @model_validator(mode="after")
     def validate_child_identifiers(self) -> Scene:
@@ -204,13 +204,28 @@ class DemoSpec(DomainModel):
     audience: str | None = Field(default=None, min_length=1, max_length=200)
     language: str = Field(default="en", pattern=r"^[a-z]{2,3}(?:-[A-Z]{2})?$")
     approximate_duration_seconds: int | None = Field(default=None, ge=1, le=3_600)
-    scenes: tuple[Scene, ...] = Field(min_length=1)
+    scenes: tuple[Scene, ...] = Field(min_length=1, max_length=50)
 
     @model_validator(mode="after")
     def validate_execution_contract(self) -> DemoSpec:
         duplicate_scenes = _duplicates([scene.id for scene in self.scenes])
         if duplicate_scenes:
             raise ValueError(f"duplicate Scene IDs: {duplicate_scenes}")
+
+        action_count = sum(len(scene.actions) for scene in self.scenes)
+        assertion_count = sum(len(scene.assertions) for scene in self.scenes)
+        pause_budget_ms = sum(
+            action.duration_ms
+            for scene in self.scenes
+            for action in scene.actions
+            if isinstance(action, PauseAction)
+        )
+        if action_count > 500:
+            raise ValueError("DemoSpec cannot contain more than 500 actions")
+        if assertion_count > 500:
+            raise ValueError("DemoSpec cannot contain more than 500 assertions")
+        if pause_budget_ms > 300_000:
+            raise ValueError("DemoSpec pause budget cannot exceed 300000 ms")
 
         if self.source_url.username is not None or self.source_url.password is not None:
             raise ValueError("source_url must not contain embedded credentials")

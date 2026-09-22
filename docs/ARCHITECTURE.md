@@ -18,12 +18,13 @@ Application orchestration
 Domain  Adapters  Persistence
 ```
 
-Through Stage 9, the application layer contains a bounded planning service plus
+In V1, the application layer contains a bounded planning service plus
 focused deterministic execution, verification, tracing, artifact-persistence,
 composition, narration, recipe, replay-preflight, and change-detection services.
-It also contains bounded repair validation and partial-render policy. Browser,
-media, and provider mechanics sit behind application-owned ports implemented by
-Playwright Chromium, FFmpeg, and optional OpenAI adapters.
+It also contains bounded repair validation, partial-render policy, a
+pre-execution safety gate, and an offline benchmark. Browser, media, and
+provider mechanics sit behind application-owned ports implemented by Playwright
+Chromium, FFmpeg, and optional OpenAI adapters.
 
 ## Technology Choices
 
@@ -91,6 +92,8 @@ rendering frameworks. Adapters implement application-defined boundaries.
 | Repair scope/application | deterministic target-only policy |
 | Repair suggestion | model behind a no-tools structured-output port |
 | Partial scene source selection | deterministic verified-artifact policy |
+| Pre-execution safety decision | deterministic application policy |
+| Release benchmark | deterministic fixtures over application services |
 
 ## DemoSpec Execution Contract
 
@@ -219,7 +222,7 @@ MP4 are included in the integrity manifest.
 
 ## DemoRun Lifecycle
 
-Stage 9 preserves this legal state graph; planning, rendering, narration,
+V1 preserves this legal state graph; planning, rendering, narration,
 replay preflight, change detection, and repair composition cannot change it:
 
 ```text
@@ -293,6 +296,24 @@ concatenates those ranges into silent `demo-repaired.mp4`; the plan records all
 source hashes and input/output bounds. Partial narration/audio regeneration is
 deliberately deferred.
 
+## Safety and Benchmark Boundaries
+
+`SafetyService` inspects an already validated DemoSpec before Playwright is
+constructed. Credential-like fill targets are blocked regardless of approval;
+named destructive, financial, account, and production clicks require a fresh
+CLI acknowledgement. The result is written atomically to
+`safety_assessment.json` and, when execution proceeds, included in the artifact
+manifest. Approval is an input to one command, not recipe provenance, so replay
+and repair must request it again.
+
+`BenchmarkService` runs fixed success, assertion-failure, action-failure, and
+browser-blocked cases through `ExecutionService` using a deterministic in-memory
+browser adapter. It measures terminal-outcome accuracy, expected evidence
+coverage, and trace sequence/correlation integrity. It never constructs a real
+browser, media adapter, provider client, or network request. These fixtures are
+a regression/release gate for V1 semantics, not an availability or general web
+automation benchmark.
+
 ## Configuration and Security
 
 Configuration comes from `.env` and `PROOFDEMO_` environment variables, with
@@ -306,13 +327,16 @@ Diagnostic logs are bounded and sanitized, and fill values are not copied into
 action trace payloads. Provider credentials are read only from environment
 configuration and are never admitted to DemoIntent, DemoSpec, traces, or
 artifacts. Speech receives only fixed, non-sensitive phrases. Recipes omit
-environment snapshots, browser session state, and credentials. Stage 9 does not
-support browser credential injection.
+environment snapshots, browser session state, and credentials. V1 does not
+support browser credential injection. DemoSpec collection sizes and total pause
+time are bounded. Production settings require an HTTPS frontend origin, disable
+interactive API docs, and enable HSTS, CSP, and defensive API response headers.
 
 ## Deliberate Deferrals
 
-There are no model tools, model-written narration, autonomous exploration,
-locator repair, editorial transitions, zooms, overlays, captions, music,
-database, queue, autonomous/multi-scene repair, partial narration, or cloud
-artifact store through Stage 9. Those are introduced only when their roadmap
-stage supplies executable acceptance criteria.
+V1 deliberately has no model tools, model-written narration, autonomous
+exploration, general locator repair, editorial transitions, zooms, overlays,
+captions, music, database, queue, background worker, autonomous/multi-scene
+repair, partial narration, authentication, hosted control plane, or cloud
+artifact store. Any later addition requires a scoped specification and measured
+need rather than being inferred from V1 completion.

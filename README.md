@@ -10,14 +10,15 @@ The product flow is:
 Intent -> Plan -> Execute -> Verify -> Capture -> Render
 ```
 
-This repository currently implements **Stage 9**: a bounded optional planner,
+This repository implements **ProofDemo V1**: a bounded optional planner,
 deterministic execution and verification, correlated artifacts, 1080p video,
-opt-in evidence-grounded narration, replay recipes, and deterministic UI change
-detection plus review-required single-scene target repair. A model may propose a
-reviewable DemoSpec or target repair, but it cannot execute either or claim
-success; spoken product claims are fixed templates derived from passed
-assertions. See
-[the current stage](docs/CURRENT_STAGE.md) for the exact scope.
+opt-in evidence-grounded narration, replay recipes, deterministic UI change
+detection, and review-required single-scene target repair. The V1 release also
+adds an offline quality benchmark, resource budgets, pre-execution safety
+assessment, production configuration hardening, and release operations. A model
+may propose a reviewable DemoSpec or target repair, but it cannot execute either
+or claim success; spoken product claims are fixed templates derived from passed
+assertions. See [the current stage](docs/CURRENT_STAGE.md) for the exact scope.
 
 ## Prerequisites
 
@@ -109,6 +110,11 @@ Then execute the checked-in DemoSpec in another terminal:
 proofdemo run examples/demo_spec.json --artifacts artifacts/todo-demo
 ```
 
+Before any browser starts, ProofDemo writes `safety_assessment.json`.
+Credential-like fills are always blocked. Named destructive, financial,
+account, or production actions require fresh per-command approval with
+`--allow-risky-actions`; replay and repair never inherit an earlier approval.
+
 To add AI speech after the same run verifies successfully:
 
 ```bash
@@ -189,6 +195,7 @@ browser infrastructure or artifact output, and `64` for an invalid input spec.
 With the Python environment active and frontend dependencies installed, run:
 
 ```bash
+proofdemo benchmark --output artifacts/benchmark_report.json
 python -m pytest
 ruff format --check .
 ruff check .
@@ -205,6 +212,12 @@ python scripts/export_schema.py
 The tests fail if
 `shared/schemas/demo_spec.schema.json` does not match the authoritative Pydantic
 model.
+
+The offline benchmark exercises verified success, assertion failure, action
+failure, and blocked infrastructure through the application services. V1
+requires perfect expected terminal outcomes, evidence coverage, and trace
+integrity on this fixed suite; it is a release gate, not a claim about arbitrary
+websites or provider quality.
 
 ## Domain boundaries
 
@@ -241,6 +254,11 @@ model.
 - Repairs may replace only diagnosed typed targets on existing click/fill
   actions or element/text assertions in one scene. Applying a reviewed proposal
   reruns the complete DemoSpec; partial rendering occurs only after `PASSED`.
+- Specs are bounded to 50 scenes, 100 actions and 100 assertions per scene, 500
+  total actions/assertions, and five minutes of declared pause time.
+- Safety assessment is deterministic and precedes browser construction. Its
+  decision and any explicit approval are included in the artifact manifest for
+  every executed run.
 
 ## Repository map
 
@@ -260,18 +278,23 @@ docs/                   product, architecture, roadmap, and stage scope
 - [Architecture](docs/ARCHITECTURE.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Current stage](docs/CURRENT_STAGE.md)
+- [Threat model](docs/THREAT_MODEL.md)
+- [Operations guide](docs/OPERATIONS.md)
+- [Release checklist](docs/RELEASE_CHECKLIST.md)
+- [Security policy](SECURITY.md)
 
 ## Security
 
-Never commit credentials or place them in DemoIntent or DemoSpec files. `.env` is ignored;
-`.env.example` documents non-secret configuration only. Stage 4 accepts only
+Never commit credentials or place them in DemoIntent or DemoSpec files. `.env`
+is ignored; `.env.example` documents non-secret configuration only. V1 accepts only
 non-sensitive literal fill data, constrains navigation to one origin, and does
 not inject browser credentials. The application-state assertion reads one
 validated top-level key and cannot execute spec-provided JavaScript. Fill
 values are omitted from action trace payloads, and browser diagnostic text is
-bounded and sanitized before persistence. Stage 9 reads provider credentials
-only from the environment and never stores them in planner inputs, candidates,
+bounded and sanitized before persistence. Provider adapters read credentials
+only from the environment and never store them in planner inputs, candidates,
 traces, narration text, or artifacts. TTS receives only non-sensitive grounded
 phrases, and artifact metadata records the AI voice disclosure. Recipes contain
-no environment snapshot, cookies, storage state, or credentials. Destructive-
-action safeguards remain a later-stage requirement.
+no environment snapshot, cookies, storage state, or credentials. The safety
+screen is deliberately conservative but cannot infer the effect of misleading
+or opaque target labels; human DemoSpec review remains required.

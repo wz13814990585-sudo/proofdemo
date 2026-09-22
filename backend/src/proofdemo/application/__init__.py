@@ -31,6 +31,7 @@ from proofdemo.application.rendering import (
     VideoTimeline,
 )
 from proofdemo.application.repair import RepairService
+from proofdemo.application.safety import SafetyAssessment, SafetyService
 from proofdemo.application.trace import TraceEvent, TraceEventKind
 from proofdemo.application.verification import (
     AssertionEvidence,
@@ -65,6 +66,8 @@ __all__ = [
     "RecipeService",
     "RepairService",
     "ReplayPreflight",
+    "SafetyAssessment",
+    "SafetyService",
     "SceneResult",
     "TimelineScene",
     "TraceEvent",
