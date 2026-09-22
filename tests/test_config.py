@@ -12,7 +12,9 @@ ENVIRONMENT_VARIABLES = (
     "PROOFDEMO_API_HOST",
     "PROOFDEMO_API_PORT",
     "PROOFDEMO_FRONTEND_ORIGIN",
+    "PROOFDEMO_PLANNER_PROVIDER",
     "PROOFDEMO_OPENAI_MODEL",
+    "PROOFDEMO_DEEPSEEK_MODEL",
     "PROOFDEMO_OPENAI_TTS_MODEL",
     "PROOFDEMO_OPENAI_TTS_VOICE",
 )
@@ -41,6 +43,23 @@ def test_settings_read_explicit_planner_model(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setenv("PROOFDEMO_OPENAI_MODEL", "account-supported-model")
 
     assert Settings.from_env().openai_model == "account-supported-model"
+
+
+def test_settings_select_deepseek_only_when_explicit(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PROOFDEMO_PLANNER_PROVIDER", "deepseek")
+    monkeypatch.setenv("PROOFDEMO_DEEPSEEK_MODEL", "deepseek-flash")
+
+    settings = Settings.from_env()
+
+    assert settings.planner_provider == "deepseek"
+    assert settings.deepseek_model == "deepseek-flash"
+
+
+def test_settings_reject_unknown_planner_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PROOFDEMO_PLANNER_PROVIDER", "unknown")
+
+    with pytest.raises(ConfigurationError, match="planner_provider"):
+        Settings.from_env()
 
 
 def test_settings_read_explicit_speech_model_and_voice(
@@ -115,8 +134,11 @@ def test_job_api_rejects_non_loopback_binding() -> None:
 
 
 def test_provider_settings_normalize_blank_values() -> None:
-    settings = Settings(openai_model=" ", openai_tts_model="", openai_tts_voice="  ")
+    settings = Settings(
+        openai_model=" ", deepseek_model=" ", openai_tts_model="", openai_tts_voice="  "
+    )
 
     assert settings.openai_model is None
+    assert settings.deepseek_model is None
     assert settings.openai_tts_model is None
     assert settings.openai_tts_voice is None

@@ -13,6 +13,7 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from proofdemo.adapters.deepseek import DeepSeekLinkAdvisor, DeepSeekPlanner
 from proofdemo.adapters.ffmpeg_polish import FFmpegVideoPolisher
 from proofdemo.adapters.ffmpeg_render import FFmpegRenderAdapter
 from proofdemo.adapters.openai_exploration import OpenAILinkAdvisor
@@ -37,7 +38,7 @@ from proofdemo.domain.planning import DemoIntent
 from proofdemo.domain.recipe import demo_spec_sha256
 from proofdemo.domain.video_polish import VideoPolishPlan
 from proofdemo.ports.browser import BrowserPort
-from proofdemo.ports.explorer import ExplorerPort, LinkAdvisorPort
+from proofdemo.ports.explorer import ExplorationUnavailableError, ExplorerPort, LinkAdvisorPort
 from proofdemo.ports.planner import PlannerPort, PlannerUnavailableError
 from proofdemo.ports.render import RenderPort, RenderUnavailableError
 from proofdemo.ports.video_polish import PolishRenderError, PolishUnavailableError, VideoPolishPort
@@ -124,6 +125,7 @@ class JobManager:
         explorer_factory: Callable[[], ExplorerPort] | None = None,
         advisor_factory: Callable[[], LinkAdvisorPort] | None = None,
         polisher_factory: Callable[[], VideoPolishPort] | None = None,
+        planner_provider: str = "openai",
     ) -> None:
         self._root = root.resolve()
         self._root.mkdir(parents=True, exist_ok=True)
@@ -133,6 +135,7 @@ class JobManager:
         self._explorer_factory = explorer_factory
         self._advisor_factory = advisor_factory
         self._polisher_factory = polisher_factory
+        self._planner_provider = planner_provider
         if (explorer_factory is None) != (advisor_factory is None):
             raise ValueError("explorer and advisor must be configured together")
         self._lock = Lock()
@@ -142,12 +145,28 @@ class JobManager:
 
     @classmethod
     def from_settings(cls, settings: Settings) -> JobManager:
+        if settings.planner_provider == "deepseek":
+
+            def planner_factory() -> PlannerPort:
+                return DeepSeekPlanner(settings.deepseek_model or "")
+
+            def advisor_factory() -> LinkAdvisorPort:
+                return DeepSeekLinkAdvisor(settings.deepseek_model or "")
+        else:
+
+            def planner_factory() -> PlannerPort:
+                return OpenAIPlanner(settings.openai_model or "")
+
+            def advisor_factory() -> LinkAdvisorPort:
+                return OpenAILinkAdvisor(settings.openai_model or "")
+
         return cls(
             settings.job_root,
-            planner_factory=lambda: OpenAIPlanner(settings.openai_model or ""),
+            planner_factory=planner_factory,
             explorer_factory=PlaywrightExplorer,
-            advisor_factory=lambda: OpenAILinkAdvisor(settings.openai_model or ""),
+            advisor_factory=advisor_factory,
             polisher_factory=FFmpegVideoPolisher,
+            planner_provider=settings.planner_provider,
         )
 
     def create(self, intent: DemoIntent) -> JobRecord:
@@ -614,13 +633,19 @@ class JobManager:
             temporary_path = Path(temporary.name)
         temporary_path.replace(path)
 
-    @staticmethod
-    def _safe_error(prefix: str, error: Exception) -> str:
+    def _safe_error(self, prefix: str, error: Exception) -> str:
         if isinstance(error, PlannerUnavailableError):
+            if self._planner_provider == "deepseek":
+                return (
+                    f"{prefix}: configure PROOFDEMO_DEEPSEEK_MODEL and "
+                    "DEEPSEEK_API_KEY, then check DeepSeek connectivity"
+                )
             return (
                 "Planning blocked: configure PROOFDEMO_OPENAI_MODEL and OPENAI_API_KEY, "
                 "then check provider connectivity"
             )
+        if isinstance(error, ExplorationUnavailableError) and self._planner_provider == "deepseek":
+            return "Exploration blocked: check DeepSeek model, API key, and connectivity"
         if isinstance(error, InvalidPlannerCandidate):
             return "Planning blocked: candidate DemoSpec violated the requested source origin"
         if isinstance(error, RenderUnavailableError):

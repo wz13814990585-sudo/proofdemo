@@ -17,7 +17,7 @@ Application orchestration
 Domain  Adapters  Persistence
 ```
 
-在 V1 中，应用层包含一个有界规划服务，以及职责集中的确定性执行、验证、轨迹、产物持久化、合成、旁白、配方、重放预检和变化检测服务。它还包含有界修复验证、局部渲染策略、执行前安全门禁和离线基准。浏览器、媒体和提供方机制位于应用自有端口之后，分别由 Playwright Chromium、FFmpeg 和可选 OpenAI 适配器实现。
+在 V1 中，应用层包含一个有界规划服务，以及职责集中的确定性执行、验证、轨迹、产物持久化、合成、旁白、配方、重放预检和变化检测服务。它还包含有界修复验证、局部渲染策略、执行前安全门禁和离线基准。浏览器、媒体和提供方机制位于应用自有端口之后，分别由 Playwright Chromium、FFmpeg 和可选模型适配器实现。
 
 ## 技术选型
 
@@ -30,6 +30,7 @@ Domain  Adapters  Persistence
 - **Playwright**：在应用自有端口之后提供 Chromium 适配器。
 - **FFmpeg/FFprobe**：在渲染端口之后提供通用媒体探测、缩放、加黑边和 H.264 编码。时间线策略由 ProofDemo 掌控。
 - **OpenAI Responses API**：在规划器端口之后提供可选结构化规划；使用明确模型，不使用工具，也不保存对话。
+- **DeepSeek Responses API**：可明确选择的规划与探索链接建议适配器；复用同一类型化输出契约，但独立读取 `DEEPSEEK_API_KEY` 并固定连接 DeepSeek 地址。
 - **OpenAI Speech API**：可选地在语音端口之后将已批准提示文本合成为 WAV。它不会接收断言载荷，也不会创作旁白。
 
 ## 仓库布局
@@ -109,7 +110,7 @@ DemoSpec `1.2` 支持 `element_visible`、`text_contains`、`url_equals`、`down
 
 ## 规划器边界
 
-`PlanningService` 接收严格的 `DemoIntent` 和一个 `PlannerPort`。OpenAI 适配器进行一次结构化输出请求，其解析类型就是权威 DemoSpec 模型。它不具备浏览器、轨迹、执行或产物能力，也不能进入 DemoRun 生命周期。
+`PlanningService` 接收严格的 `DemoIntent` 和一个 `PlannerPort`。OpenAI 或显式选择的 DeepSeek 适配器进行一次结构化输出请求，其解析类型就是权威 DemoSpec 模型。它不具备浏览器、轨迹、执行或产物能力，也不能进入 DemoRun 生命周期。DeepSeek 适配器只从进程环境读取 `DEEPSEEK_API_KEY`，固定使用 `https://api.deepseek.com`；不会复用 OpenAI 密钥或任意 `OPENAI_BASE_URL`。工作台探索链接建议与最终规划使用同一选定提供方；CLI `plan` 使用该提供方但不探索。TTS 与修复建议目前仍为 OpenAI 专属。
 
 ProofDemo 通过领域验证重新构建返回的模型，并拒绝规范化源站与请求源站不同的候选结果。该结果明确是需要审核的建议：`proofdemo plan` 原子写入候选文件，而 `proofdemo run` 始终是单独的用户操作。缺少模型或提供方配置只会阻塞规划；手工编写的 DemoSpec 无需访问模型，仍可进入确定性管线。
 
@@ -198,7 +199,7 @@ Stage 11 当时的工作台没有站点探索能力，单次规划仍依赖用�
 
 ## Stage 12 — 有证据约束的只读探索（已完成）
 
-仅工作台任务在规划前运行 `ExplorationService`；CLI 的 `plan` 不改变。隔离的 `PlaywrightExplorer` 使用全新无凭据上下文，阻止非 GET、跨源请求、下载链接与所有重定向，不点击或填充页面。应用层额外筛掉风险路径、下载扩展名和可能包含秘密的查询键；最多访问 5 页，保留每页最多 120 个可见控件、50 个候选链接，采用总时间预算和逐页导航超时。`OpenAILinkAdvisor` 的结构化建议只能选择精确位于已观察安全候选集合中的 URL；页面内容始终视为不可信数据。
+仅工作台任务在规划前运行 `ExplorationService`；CLI 的 `plan` 不改变。隔离的 `PlaywrightExplorer` 使用全新无凭据上下文，阻止非 GET、跨源请求、下载链接与所有重定向，不点击或填充页面。应用层额外筛掉风险路径、下载扩展名和可能包含秘密的查询键；最多访问 5 页，保留每页最多 120 个可见控件、50 个候选链接，采用总时间预算和逐页导航超时。选定提供方的结构化链接建议只能选择精确位于已观察安全候选集合中的 URL；页面内容始终视为不可信数据。
 
 每页实际 URL、标题、有限标题层级、可操作控件的唯一定位、导航来源与截图哈希写入版本化 `exploration_report.json`。报告中的 `COMPLETE` 只表示当前安全候选已访问完，不表示理解整个产品。工作台可查看页面、截图、警告和进度；页面截图本身可能含敏感内容，必须只使用获授权的非敏感站点。GET 也可能被目标服务器设计成有副作用，因此“只读”仅表示 ProofDemo 不有意提交表单或发出写方法，不能构成对站点状态绝对不变的保证。
 

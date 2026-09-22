@@ -11,6 +11,7 @@ from tempfile import NamedTemporaryFile
 
 from pydantic import ValidationError
 
+from proofdemo.adapters.deepseek import DeepSeekPlanner
 from proofdemo.adapters.ffmpeg_audio import FFmpegAudioMixAdapter
 from proofdemo.adapters.ffmpeg_partial import FFmpegPartialRenderAdapter
 from proofdemo.adapters.ffmpeg_render import FFmpegRenderAdapter
@@ -440,15 +441,30 @@ def _plan_spec(args: argparse.Namespace) -> int:
         print(f"Invalid demo intent: {error}", file=sys.stderr)
         return EXIT_INVALID_INPUT
 
-    model = args.model or Settings.from_env().openai_model
+    settings = Settings.from_env()
+    model = args.model or (
+        settings.deepseek_model
+        if settings.planner_provider == "deepseek"
+        else settings.openai_model
+    )
     if not model:
         print(
-            "Planner blocked: set --model or PROOFDEMO_OPENAI_MODEL",
+            "Planner blocked: set --model or "
+            + (
+                "PROOFDEMO_DEEPSEEK_MODEL"
+                if settings.planner_provider == "deepseek"
+                else "PROOFDEMO_OPENAI_MODEL"
+            ),
             file=sys.stderr,
         )
         return EXIT_BLOCKED
     try:
-        result = PlanningService(OpenAIPlanner(model)).plan(intent)
+        planner = (
+            DeepSeekPlanner(model)
+            if settings.planner_provider == "deepseek"
+            else OpenAIPlanner(model)
+        )
+        result = PlanningService(planner).plan(intent)
         _write_candidate(result.spec, args.output)
     except PlannerUnavailableError as error:
         print(f"Planner blocked: {error}", file=sys.stderr)

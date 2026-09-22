@@ -41,14 +41,15 @@ If a requested dynamic flow cannot be grounded, do not invent its controls.
 class OpenAIPlanner:
     """One tool-free, non-persisted structured-output model call."""
 
-    def __init__(self, model: str, *, client: Any | None = None) -> None:
+    def __init__(self, model: str, *, client: Any | None = None, provider: str = "openai") -> None:
         if not model.strip():
-            raise PlannerUnavailableError("an explicit OpenAI planner model is required")
+            raise PlannerUnavailableError("an explicit planner model is required")
         self._model = model
+        self._provider = provider
         try:
             self._client = client or OpenAI()
         except OpenAIError as error:
-            raise PlannerUnavailableError("OpenAI client configuration is unavailable") from error
+            raise PlannerUnavailableError("model client configuration is unavailable") from error
 
     def plan(self, intent: DemoIntent) -> PlannerCandidate:
         try:
@@ -61,11 +62,11 @@ class OpenAIPlanner:
                 store=False,
             )
         except OpenAIError as error:
-            raise PlannerUnavailableError("OpenAI planner request failed") from error
+            raise PlannerUnavailableError("planner request failed") from error
         parsed = response.output_parsed
         if not isinstance(parsed, DemoSpec):
             raise PlannerResponseError("planner returned no structured DemoSpec candidate")
-        return PlannerCandidate(spec=parsed, provider="openai", model=self._model)
+        return PlannerCandidate(spec=parsed, provider=self._provider, model=self._model)
 
     def plan_grounded(self, intent: DemoIntent, report: ExplorationReport) -> PlannerCandidate:
         payload = {
@@ -82,8 +83,8 @@ class OpenAIPlanner:
                 store=False,
             )
         except OpenAIError as error:
-            raise PlannerUnavailableError("OpenAI grounded planner request failed") from error
+            raise PlannerUnavailableError("grounded planner request failed") from error
         parsed = response.output_parsed
         if not isinstance(parsed, DemoSpec):
             raise PlannerResponseError("grounded planner returned no structured DemoSpec")
-        return PlannerCandidate(spec=parsed, provider="openai", model=self._model)
+        return PlannerCandidate(spec=parsed, provider=self._provider, model=self._model)

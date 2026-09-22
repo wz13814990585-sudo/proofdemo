@@ -30,7 +30,15 @@ python -m playwright install chromium
 cp .env.example .env
 ```
 
-确定性管线不需要 API 密钥。若要使用可选规划器，请在环境中设置 `OPENAI_API_KEY`，并通过 `PROOFDEMO_OPENAI_MODEL` 或 `--model` 选择一个明确的模型；ProofDemo 不会替你选择会浮动变化的默认模型。
+确定性管线不需要 API 密钥。规划器默认使用 OpenAI：在进程环境中设置 `OPENAI_API_KEY`，并通过 `PROOFDEMO_OPENAI_MODEL` 或 `--model` 指定模型。要试用 DeepSeek，请先撤销任何已在聊天或其他公开位置暴露的密钥，再创建新密钥，并仅在启动 ProofDemo 的本机终端设置：
+
+```bash
+export PROOFDEMO_PLANNER_PROVIDER=deepseek
+export PROOFDEMO_DEEPSEEK_MODEL=deepseek-flash
+export DEEPSEEK_API_KEY="<新生成的本地密钥>"
+```
+
+不要把真实密钥写进仓库或发到聊天中。DeepSeek 选项使用固定的 `https://api.deepseek.com` 地址；即使本机同时配置了 OpenAI 环境变量，也不会把 DeepSeek 密钥交给 OpenAI 默认端点。模型名称需要与你的 DeepSeek 账户实际可用的型号一致；接口和型号以 [DeepSeek 官方文档](https://api-docs.deepseek.com/) 为准。切回默认提供方可设置 `PROOFDEMO_PLANNER_PROVIDER=openai` 并使用 OpenAI 的模型及密钥。ProofDemo 不会替你选择浮动变化的默认模型。
 
 按需启用旁白还需要明确设置 `PROOFDEMO_OPENAI_TTS_MODEL` 和 `PROOFDEMO_OPENAI_TTS_VOICE`（或对应的 CLI 参数）。语音提供方只会接收已经批准的旁白文本。适配器使用的 WAV 语音端点记录在 [OpenAI 文本转语音指南](https://developers.openai.com/api/docs/guides/text-to-speech)中。
 
@@ -60,7 +68,7 @@ npm --prefix frontend run dev
 
 打开 `http://127.0.0.1:5173`。前端可输入产品 URL、演示目标、受众、语言和时长，点击“生成演示”，查看只读探索页面/控件与锚定覆盖、规划后的 DemoSpec、实时浏览器截图与操作事件、逐场景验证、视频编辑计划，以及仅在验证通过后可播放/下载的润色视频。具名高风险操作会停在单独审批态，凭据填充会被阻止。可在 `frontend/.env.local` 中设置 `VITE_API_BASE_URL`，覆盖默认 API URL。
 
-工作台需要明确配置 `PROOFDEMO_OPENAI_MODEL` 和进程环境中的 `OPENAI_API_KEY`；缺少配置会显示 `BLOCKED`。它先在全新无凭据的 Chromium 会话中观察最多 5 个同源页面，再让模型仅从已观察的安全链接中建议下一页，并以版本化报告约束 DemoSpec。导航必须指向实际访问的页面，点击/填充必须精确匹配该页已观察的唯一控件；否则在执行前阻止。探索不提交表单、不点击、不访问跨源资源，并阻止非 GET 请求及重定向；这无法保证目标站点的 GET 端点本身无副作用。不要对敏感或未获授权站点运行。真实 Chromium/FFmpeg 验收覆盖两个本地应用，模型适配器仅用假客户端测试，尚无真实模型对任意站点成功率的证据。
+工作台需要按选定提供方配置模型和进程环境中的密钥：OpenAI 使用 `PROOFDEMO_OPENAI_MODEL` / `OPENAI_API_KEY`，DeepSeek 使用 `PROOFDEMO_DEEPSEEK_MODEL` / `DEEPSEEK_API_KEY`；缺少配置会显示 `BLOCKED`。它先在全新无凭据的 Chromium 会话中观察最多 5 个同源页面，再让模型仅从已观察的安全链接中建议下一页，并以版本化报告约束 DemoSpec。导航必须指向实际访问的页面，点击/填充必须精确匹配该页已观察的唯一控件；否则在执行前阻止。探索不提交表单、不点击、不访问跨源资源，并阻止非 GET 请求及重定向；这无法保证目标站点的 GET 端点本身无副作用。不要对敏感或未获授权站点运行。真实 Chromium/FFmpeg 验收覆盖两个本地应用，模型适配器仅用假客户端测试，尚无真实模型对任意站点成功率的证据。
 
 成功执行后，工作台以已验证基础视频为来源，生成独立的 `polished_demo.mp4`：实际捕获到点击/填充目标坐标时添加平滑光标与短时自动缩放；每个已通过场景添加标题字幕、验证标注与场景过渡。无可靠坐标时保留静态镜头。`polish_plan.json`、`polish_captions.json`、覆盖层 PNG 和基础 `demo.mp4` 会连同润色版进入产物清单。当前字幕是已验证场景的屏幕文字，不是语音转写或动态逐词字幕；工作台不会自动混入 CLI 的可选 TTS。目标时长和语言会交给规划器，但不能保证恰好生成所选时长或完整本地化视频。实现使用离线 Chromium 文本资产与 FFmpeg；本地 FFmpeg 不具备文本滤镜，当前也没有可证明需要 Remotion 的编辑模板需求。润色失败会明确阻塞任务，不把基础视频冒充润色成功。
 
@@ -75,7 +83,7 @@ proofdemo plan https://app.example.test/ \
   --output candidate.json
 ```
 
-CLI 的 `plan` 与 `run` 仍是两条显式命令，必须在运行前审查候选；CLI `plan` 不执行 Stage 12 探索。工作台的“生成演示”则会对证据锚定且安全评估为 `ALLOWED` 的计划继续执行；具名风险操作要求在 UI 中重新审核并批准。模型调用不使用工具，也不持久化对话；探索的逐页候选选择和最终 DemoSpec 是分开的有界结构化输出请求，模型不能直接操控浏览器。适配器使用的提供方机制请参阅 [OpenAI 结构化输出指南](https://developers.openai.com/api/docs/guides/structured-outputs)。
+CLI 的 `plan` 与 `run` 仍是两条显式命令，必须在运行前审查候选；CLI `plan` 不执行 Stage 12 探索，并按 `PROOFDEMO_PLANNER_PROVIDER` 选择规划器。工作台的“生成演示”则会对证据锚定且安全评估为 `ALLOWED` 的计划继续执行；具名风险操作要求在 UI 中重新审核并批准。模型调用不使用工具，也不持久化对话；探索的逐页候选选择和最终 DemoSpec 是分开的有界结构化输出请求，模型不能直接操控浏览器。DeepSeek 通过其 [Responses API](https://api-docs.deepseek.com/guides/responses_api/) 接收目标和有界页面观察；输出仍必须通过 ProofDemo 的确定性锚定与验证。可选语音合成和修复建议仍只支持 OpenAI，不会因选择 DeepSeek 而自动改用 DeepSeek。DeepSeek 适配器目前只用假客户端测试，尚未使用新密钥做真实调用或测量陌生站点成功率。
 
 对于仓库内置的确定性示例，请在一个终端中启动独立的 Todo fixture：
 

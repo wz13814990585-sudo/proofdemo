@@ -33,7 +33,9 @@ class Settings(BaseSettings):
     api_port: int = Field(default=8000, ge=1, le=65_535)
     frontend_origin: str = "http://127.0.0.1:5173"
     job_root: Path = Path("artifacts/jobs")
+    planner_provider: Literal["openai", "deepseek"] = "openai"
     openai_model: str | None = None
+    deepseek_model: str | None = None
     openai_tts_model: str | None = None
     openai_tts_voice: str | None = None
 
@@ -66,7 +68,7 @@ class Settings(BaseSettings):
             raise ValueError("frontend_origin must be one credential-free HTTP(S) origin")
         return value.rstrip("/")
 
-    @field_validator("openai_model", "openai_tts_model", "openai_tts_voice")
+    @field_validator("openai_model", "deepseek_model", "openai_tts_model", "openai_tts_voice")
     @classmethod
     def normalize_optional_provider_setting(cls, value: str | None) -> str | None:
         if value is None:
