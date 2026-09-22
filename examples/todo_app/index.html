@@ -13,6 +13,7 @@
       label { flex: 1; font-weight: 650; }
       input { display: block; box-sizing: border-box; width: 100%; margin-top: 8px; padding: 12px; border: 1px solid #aeb8ce; border-radius: 8px; font: inherit; }
       button { align-self: end; padding: 12px 18px; border: 0; border-radius: 8px; background: #315be8; color: white; font: inherit; font-weight: 700; cursor: pointer; }
+      a { display: inline-block; margin-top: 20px; color: #315be8; font-weight: 650; }
       ul { min-height: 48px; margin-bottom: 0; padding-left: 24px; }
       li { padding: 8px 0; }
     </style>
@@ -25,11 +26,13 @@
         <button type="submit">Add task</button>
       </form>
       <ul data-testid="task-list" aria-label="Task list"></ul>
+      <a href="launch-plan.txt" download>Download launch plan</a>
     </main>
     <script>
       const form = document.querySelector("#task-form");
       const input = document.querySelector("#task-title");
       const list = document.querySelector('[data-testid="task-list"]');
+      window.__PROOFDEMO_STATE__ = { taskCount: 0, lastTask: null };
       form.addEventListener("submit", (event) => {
         event.preventDefault();
         const value = input.value.trim();
@@ -38,6 +41,8 @@
         item.textContent = value;
         list.append(item);
         input.value = "";
+        window.__PROOFDEMO_STATE__.taskCount += 1;
+        window.__PROOFDEMO_STATE__.lastTask = value;
       });
     </script>
   </body>

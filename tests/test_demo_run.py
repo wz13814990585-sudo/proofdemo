@@ -60,18 +60,26 @@ def test_run_reaches_unsuccessful_terminal_outcome(
     assert terminal.transitions[-1].reason == reason
 
 
-@pytest.mark.parametrize("start_status", [DemoRunStatus.RUNNING, DemoRunStatus.EXECUTED])
-def test_passed_is_reserved_for_future_verification(start_status: DemoRunStatus) -> None:
-    run = advance_to_running()
-    if start_status is DemoRunStatus.EXECUTED:
-        run = transition_demo_run(
-            run,
-            DemoRunStatus.EXECUTED,
-            now=START + timedelta(seconds=3),
-        )
-
+def test_passed_requires_executed_state() -> None:
     with pytest.raises(InvalidRunTransition, match="PASSED"):
-        transition_demo_run(run, DemoRunStatus.PASSED)
+        transition_demo_run(advance_to_running(), DemoRunStatus.PASSED)
+
+
+def test_verified_run_transitions_from_executed_to_passed() -> None:
+    executed = transition_demo_run(
+        advance_to_running(),
+        DemoRunStatus.EXECUTED,
+        now=START + timedelta(seconds=3),
+    )
+
+    passed = transition_demo_run(
+        executed,
+        DemoRunStatus.PASSED,
+        now=START + timedelta(seconds=4),
+    )
+
+    assert passed.status is DemoRunStatus.PASSED
+    assert passed.transitions[-1].from_status is DemoRunStatus.EXECUTED
 
 
 def test_run_rejects_skipping_validation() -> None:

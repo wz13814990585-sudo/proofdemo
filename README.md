@@ -10,10 +10,10 @@ The product flow is:
 Intent -> Plan -> Execute -> Verify -> Capture -> Render
 ```
 
-This repository currently implements **Stage 1**: project foundations plus a
-deterministic Playwright execution path for manually authored DemoSpecs. It can
-run browser actions and capture requested screenshots, but it does not yet
-execute assertions or claim verified success. See
+This repository currently implements **Stage 2**: deterministic Playwright
+execution plus evidence-backed scene verification for manually authored
+DemoSpecs. It can prove declared DOM, URL, download, and opt-in application
+state outcomes without relying on an LLM success claim. See
 [the current stage](docs/CURRENT_STAGE.md) for the exact scope.
 
 ## Prerequisites
@@ -78,10 +78,11 @@ Then execute the checked-in DemoSpec in another terminal:
 proofdemo run examples/demo_spec.json --artifacts artifacts/todo-demo
 ```
 
-A successful Stage 1 run exits `0`, finishes as `EXECUTED`, and writes
-`execution_report.json` plus `task-created.png`. `EXECUTED` means only that all
-browser actions completed. The report keeps `verification_status` at `NOT_RUN`
-because assertion execution begins in Stage 2.
+A successful Stage 2 run exits `0`, transitions through `EXECUTED` to `PASSED`,
+and writes `execution_report.json` plus `task-created.png`. The report contains
+scene and assertion outcomes with structured expected and observed evidence.
+`EXECUTED` continues to mean only that browser actions completed; only the
+deterministic verifier can produce `PASSED`.
 
 The CLI uses exit code `1` for an action-level `FAILED` result, `2` for blocked
 browser infrastructure or artifact output, and `64` for an invalid input spec.
@@ -110,15 +111,18 @@ model.
 
 ## Domain boundaries
 
-- DemoSpec `1.1` uses stable Scene, Action, and Assertion IDs.
+- DemoSpec `1.2` uses stable Scene, Action, and Assertion IDs and requires at
+  least one assertion per scene.
 - `source_url` defines the allowed origin; every `goto` remains on that origin.
 - `pause` is a presentation delay, not a page-readiness check.
 - Literal fill values are non-sensitive demonstration data only.
 - The browser adapter enforces the DemoSpec source origin before navigation and
   after redirects.
+- Deterministic assertions cover element visibility, text containment, exact
+  normalized URLs, completed downloads, and one declared JSON application
+  state key.
 - `EXECUTED` means actions completed. It does not mean assertions passed.
-- `PASSED` is reserved for the Stage 2 deterministic verifier and cannot be
-  produced by the current implementation.
+- `PASSED` requires every scene assertion to pass with structured evidence.
 
 ## Repository map
 
@@ -142,7 +146,8 @@ docs/                   product, architecture, roadmap, and stage scope
 ## Security
 
 Never commit credentials or place them in DemoSpec files. `.env` is ignored;
-`.env.example` documents non-secret configuration only. Stage 1 accepts only
+`.env.example` documents non-secret configuration only. Stage 2 accepts only
 non-sensitive literal fill data, constrains navigation to one origin, and does
-not inject browser credentials. Recording redaction and destructive-action
-safeguards remain later-stage requirements.
+not inject browser credentials. The application-state assertion reads one
+validated top-level key and cannot execute spec-provided JavaScript. Recording
+redaction and destructive-action safeguards remain later-stage requirements.

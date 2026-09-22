@@ -1,5 +1,36 @@
 {
   "$defs": {
+    "AppStateEqualsAssertion": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_value": {
+          "$ref": "#/$defs/JsonValue"
+        },
+        "id": {
+          "pattern": "^[a-z][a-z0-9_-]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "key": {
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$",
+          "title": "Key",
+          "type": "string"
+        },
+        "type": {
+          "const": "app_state_equals",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "key",
+        "expected_value"
+      ],
+      "title": "AppStateEqualsAssertion",
+      "type": "object"
+    },
     "ClickAction": {
       "additionalProperties": false,
       "properties": {
@@ -79,6 +110,41 @@
         "selector"
       ],
       "title": "CssTarget",
+      "type": "object"
+    },
+    "DownloadCompletedAssertion": {
+      "additionalProperties": false,
+      "properties": {
+        "filename": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Filename",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[a-z][a-z0-9_-]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "timeout_ms": {
+          "default": 10000,
+          "maximum": 120000,
+          "minimum": 1,
+          "title": "Timeout Ms",
+          "type": "integer"
+        },
+        "type": {
+          "const": "download_completed",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "filename"
+      ],
+      "title": "DownloadCompletedAssertion",
       "type": "object"
     },
     "ElementVisibleAssertion": {
@@ -242,6 +308,7 @@
       "title": "GotoAction",
       "type": "object"
     },
+    "JsonValue": {},
     "LabelTarget": {
       "additionalProperties": false,
       "properties": {
@@ -378,10 +445,11 @@
           "type": "array"
         },
         "assertions": {
-          "default": [],
           "items": {
             "discriminator": {
               "mapping": {
+                "app_state_equals": "#/$defs/AppStateEqualsAssertion",
+                "download_completed": "#/$defs/DownloadCompletedAssertion",
                 "element_visible": "#/$defs/ElementVisibleAssertion",
                 "text_contains": "#/$defs/TextContainsAssertion",
                 "url_equals": "#/$defs/UrlEqualsAssertion"
@@ -397,9 +465,16 @@
               },
               {
                 "$ref": "#/$defs/TextContainsAssertion"
+              },
+              {
+                "$ref": "#/$defs/DownloadCompletedAssertion"
+              },
+              {
+                "$ref": "#/$defs/AppStateEqualsAssertion"
               }
             ]
           },
+          "minItems": 1,
           "title": "Assertions",
           "type": "array"
         },
@@ -425,7 +500,8 @@
         "id",
         "title",
         "goal",
-        "actions"
+        "actions",
+        "assertions"
       ],
       "title": "Scene",
       "type": "object"
@@ -664,7 +740,7 @@
       "type": "array"
     },
     "schema_version": {
-      "const": "1.1",
+      "const": "1.2",
       "title": "Schema Version",
       "type": "string"
     },

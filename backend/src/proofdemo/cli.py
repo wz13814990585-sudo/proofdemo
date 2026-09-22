@@ -61,7 +61,7 @@ def run(argv: Sequence[str] | None = None) -> int:
         return EXIT_BLOCKED
 
     print(f"{report.run.status}: {report_path}")
-    if report.run.status is DemoRunStatus.EXECUTED:
+    if report.run.status in {DemoRunStatus.EXECUTED, DemoRunStatus.PASSED}:
         return EXIT_EXECUTED
     if report.run.status is DemoRunStatus.FAILED:
         return EXIT_FAILED

@@ -24,13 +24,13 @@ local test application. Return a lightweight execution report and finish the
 run as `EXECUTED`; do not claim verification. No model planning or autonomous
 recovery.
 
-## Stage 2 — Assertions and Verified Scenes (next)
+## Stage 2 — Assertions and Verified Scenes (complete)
 
 Evaluate explicit DOM, URL, download, and application-facing assertions. Give
 every scene a `PASSED`, `FAILED`, or `BLOCKED` outcome tied to evidence, and
 enable the verified run transition from `EXECUTED` to `PASSED`.
 
-## Stage 3 — Trace and Browser Recording
+## Stage 3 — Trace and Browser Recording (next)
 
 Persist the full structured action/observation trace, automatic evidence
 screenshots, logs, artifact metadata, and browser video without changing

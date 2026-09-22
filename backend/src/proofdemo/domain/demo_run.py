@@ -33,7 +33,9 @@ ALLOWED_TRANSITIONS = MappingProxyType(
         DemoRunStatus.RUNNING: frozenset(
             {DemoRunStatus.EXECUTED, DemoRunStatus.FAILED, DemoRunStatus.BLOCKED}
         ),
-        DemoRunStatus.EXECUTED: frozenset({DemoRunStatus.FAILED, DemoRunStatus.BLOCKED}),
+        DemoRunStatus.EXECUTED: frozenset(
+            {DemoRunStatus.PASSED, DemoRunStatus.FAILED, DemoRunStatus.BLOCKED}
+        ),
         DemoRunStatus.PASSED: frozenset(),
         DemoRunStatus.FAILED: frozenset(),
         DemoRunStatus.BLOCKED: frozenset(),
